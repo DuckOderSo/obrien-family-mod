@@ -1,0 +1,73 @@
+# Baut die Mod öffentlich nachvollziehbar aus genau diesem Quellcode, signiert sie, erzeugt einen
+# GitHub-Build-Nachweis (Provenance) und veröffentlicht sie als Release, wenn mod_version neu ist.
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "25" }
+
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "9.8.2" }
+
+      - name: Bauen
+        run: gradle build --no-daemon
+
+      - name: Version und vorhandene Releases prüfen
+        id: ver
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          v=$(grep '^mod_version=' gradle.properties | cut -d= -f2 | tr -d '[:space:]')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.ref }}" != "refs/heads/main" ]; then echo "release=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v gibt es schon – kein neues Release."; echo "release=false" >> "$GITHUB_OUTPUT"; else echo "release=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Signieren
+        if: steps.ver.outputs.release == 'true'
+        env:
+          MOD_SIGNING_KEY: ${{ secrets.MOD_SIGNING_KEY }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          if [ -z "$MOD_SIGNING_KEY" ]; then echo "::error::GitHub-Secret MOD_SIGNING_KEY fehlt (Settings → Secrets and variables → Actions)."; exit 1; fi
+          jar="build/libs/obrien-mod-$V.jar"
+          umask 077; printf '%s\n' "$MOD_SIGNING_KEY" > "$RUNNER_TEMP/key.pem"
+          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/key.pem" -rawin -in "$jar" -out "$jar.sig"
+          rm -f "$RUNNER_TEMP/key.pem"
+          # Gegenprobe mit dem öffentlichen Schlüssel aus dem Repository
+          openssl pkeyutl -verify -pubin -inkey signing-public-key.pem -rawin -in "$jar" -sigfile "$jar.sig"
+          (cd build/libs && sha256sum "obrien-mod-$V.jar" > SHA256SUMS.txt)
+
+      - name: Build-Nachweis erzeugen
+        if: steps.ver.outputs.release == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: build/libs/obrien-mod-${{ steps.ver.outputs.version }}.jar
+
+      - name: Release veröffentlichen
+        if: steps.ver.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "v$V" --title "O’Brien Family Mod v$V" --target "$GITHUB_SHA" \
+            --notes "Gebaut aus Commit $GITHUB_SHA mit GitHub Actions (Minecraft $(grep '^minecraft_version=' gradle.properties | cut -d= -f2), Fabric). Signiert mit dem Schlüssel aus signing-public-key.pem; Build-Nachweis: gh attestation verify obrien-mod-$V.jar --repo $GITHUB_REPOSITORY" \
+            "build/libs/obrien-mod-$V.jar" "build/libs/obrien-mod-$V.jar.sig" build/libs/SHA256SUMS.txt

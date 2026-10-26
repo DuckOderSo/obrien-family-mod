@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "obrien",
+	"version": "${version}",
+	"name": "O’Brien Family Shop",
+	"description": "Internes Werkzeug der O’Brien Family: neue Bestellanfragen, Dienstleistungsanfragen und Aufgaben aus dem Shop direkt im Spiel. Aktualisiert sich auf Nachfrage selbst (signierte Updates).",
+	"authors": [
+		"O’Brien Family"
+	],
+	"contact": {
+		"homepage": "https://obrien-familie-shop.vercel.app",
+		"sources": "https://github.com/DuckOderSo/obrien-family-mod",
+		"issues": "https://github.com/DuckOderSo/obrien-family-mod/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/obrien/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"net.obrienfamily.mod.ObrienMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
