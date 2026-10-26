@@ -3,7 +3,6 @@ package net.obrienfamily.mod;
 import com.google.gson.JsonObject;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -86,8 +85,8 @@ public final class Updater {
 			if (announce && !v.equals(announced) && !v.equals(staged) && Minecraft.getInstance().player != null) {
 				announced = v;
 				Notifier.chat(Component.empty()
-					.append(Notifier.text("Update v" + v + " verfügbar (du hast v" + ObrienMod.version() + "). ", ChatFormatting.YELLOW))
-					.append(Notifier.command("[Jetzt herunterladen]", "/obrien update", "Lädt v" + v + " herunter, prüft die Signatur und installiert sie beim Beenden von Minecraft.")));
+					.append(Theme.b("Update v" + v, Theme.GOLD)).append(Theme.t(" verfügbar (installiert: v" + ObrienMod.version() + ")  ", Theme.TEXT))
+					.append(Notifier.command("[Installieren]", "/obrien update", "Lädt v" + v + " herunter, prüft die Signatur und installiert sie beim Beenden von Minecraft.")));
 			}
 		} catch (ShopApi.ApiException e) {
 			ObrienMod.LOG.debug("[O'Brien] Update-Prüfung fehlgeschlagen: {}", e.getMessage());
@@ -102,12 +101,12 @@ public final class Updater {
 	public void install() {
 		check(false);
 		JsonObject r = available;
-		if (r == null) { Notifier.chat(Notifier.text("Du hast bereits die neueste Version (v" + ObrienMod.version() + ").", ChatFormatting.GREEN)); return; }
+		if (r == null) { Notifier.ok("Du hast bereits die neueste Version (v" + ObrienMod.version() + ")."); return; }
 		String v = r.get("version").getAsString();
-		if (v.equals(staged)) { Notifier.chat(Notifier.text("v" + v + " ist bereits heruntergeladen und wird beim Beenden von Minecraft installiert.", ChatFormatting.GREEN)); return; }
+		if (v.equals(staged)) { Notifier.ok("v" + v + " liegt bereit und wird beim Beenden von Minecraft installiert."); return; }
 		Path jar = ownJar();
-		if (jar == null) { Notifier.chat(Notifier.text("Automatische Installation ist nur mit installierter Mod-Datei möglich.", ChatFormatting.RED)); return; }
-		Notifier.chat(Notifier.text("Lade v" + v + " herunter …", ChatFormatting.GRAY));
+		if (jar == null) { Notifier.error("Automatische Installation ist nur mit installierter Mod-Datei möglich."); return; }
+		Notifier.info("Lade v" + v + " herunter …");
 		try {
 			byte[] data = ObrienMod.api.downloadPublic(r.get("jar").getAsString(), MAX_SIZE);
 			byte[] sig = ObrienMod.api.downloadPublic(r.get("sig").getAsString(), 4096);
@@ -121,14 +120,14 @@ public final class Updater {
 			Files.move(part, pending, StandardCopyOption.REPLACE_EXISTING);
 			staged = v;
 			installHook(jar, pending, dir.resolve("obrien-mod-" + v + ".jar"));
-			Notifier.chat(Notifier.text("v" + v + " heruntergeladen und Signatur geprüft ✔ Das Update wird installiert, sobald du Minecraft schließt.", ChatFormatting.GREEN));
+			Notifier.ok("v" + v + " geladen, Signatur geprüft. Installation beim Beenden von Minecraft.");
 		} catch (SecurityException e) {
-			Notifier.chat(Notifier.text(e.getMessage(), ChatFormatting.RED));
+			Notifier.error(e.getMessage());
 		} catch (ShopApi.ApiException e) {
-			Notifier.chat(Notifier.text(e.getMessage(), ChatFormatting.RED));
+			Notifier.error(e.getMessage());
 		} catch (Exception e) {
 			ObrienMod.LOG.warn("[O'Brien] Update fehlgeschlagen", e);
-			Notifier.chat(Notifier.text("Update fehlgeschlagen: " + e.getClass().getSimpleName(), ChatFormatting.RED));
+			Notifier.error("Update fehlgeschlagen (" + e.getClass().getSimpleName() + ").");
 		}
 	}
 
