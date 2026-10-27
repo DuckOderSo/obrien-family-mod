@@ -38,7 +38,7 @@ public final class ObrienMod implements ClientModInitializer {
 	static ShopApi api;
 	static Updater updater;
 	static ScheduledExecutorService worker;
-	private static KeyMapping ordersKey;
+	private static KeyMapping ordersKey, boardKey;
 
 	private static volatile String cursor;
 	private static volatile boolean welcomed;
@@ -57,10 +57,13 @@ public final class ObrienMod implements ClientModInitializer {
 		});
 		Commands.register();
 		// Taste B (in den Steuerungs-Einstellungen änderbar): Bestellübersicht öffnen. O ist in 26.3 die Freundesliste.
-		ordersKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.obrien.orders", InputConstants.Type.KEYBOARD, InputConstants.KEY_B,
-			KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ID, "main"))));
+		// Taste J: Family Task Board (J ist in 26.3 nicht belegt).
+		KeyMapping.Category cat = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ID, "main"));
+		ordersKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.obrien.orders", InputConstants.Type.KEYBOARD, InputConstants.KEY_B, cat));
+		boardKey = KeyMappingHelper.registerKeyMapping(new KeyMapping("key.obrien.board", InputConstants.Type.KEYBOARD, InputConstants.KEY_J, cat));
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (ordersKey.consumeClick()) if (client.gui.screen() == null) OrdersScreen.open(null);
+			while (boardKey.consumeClick()) if (client.gui.screen() == null) BoardScreen.open();
 		});
 		ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
 			worker.execute(updater::cleanup);
@@ -146,7 +149,7 @@ public final class ObrienMod implements ClientModInitializer {
 		if (r.get("member").getAsBoolean() && mine > 0) lines.add(Component.empty().append(Theme.t(" ▸ ", Theme.DARK)).append(Theme.b(String.valueOf(mine), Theme.VIOLET))
 			.append(Theme.t(mine == 1 ? " offene Aufgabe" : " offene Aufgaben", Theme.TEXT))
 			.append(overdue > 0 ? Theme.t(" · " + overdue + " überfällig", Theme.ERR) : Component.empty()).append(Theme.t("  ", Theme.TEXT))
-			.append(Notifier.command("[Anzeigen]", "/obrien aufgaben", "Deine Aufgaben anzeigen")));
+			.append(Notifier.command("[Board öffnen]", "/obrien board", "Family Task Board öffnen (Taste J)")));
 		if (lines.isEmpty()) lines.add(Theme.t(" Alles erledigt – keine neuen Anfragen.", Theme.MUTED));
 		Notifier.block("Willkommen zurück, " + r.get("name").getAsString(), lines.toArray(new Component[0]));
 	}
@@ -158,7 +161,7 @@ public final class ObrienMod implements ClientModInitializer {
 		MutableComponent m = Component.empty().append(Theme.b(title, color)).append(Theme.t("  " + text + "  ", Theme.TEXT));
 		switch (type) {
 			case "order" -> m.append(Notifier.command("[Öffnen]", ref != null ? "/obrien bestellung " + ref : "/obrien bestellungen", "Details der Bestellanfrage öffnen"));
-			case "task", "comment" -> m.append(Notifier.command("[Anzeigen]", "/obrien aufgaben", "Deine Aufgaben anzeigen"));
+			case "task", "comment" -> m.append(Notifier.command("[Board öffnen]", "/obrien board", "Family Task Board öffnen (Taste J)"));
 			default -> m.append(Notifier.link("[Im Browser]", config.base() + "/admin"));
 		}
 		Notifier.chat(m);

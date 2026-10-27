@@ -27,6 +27,7 @@ public final class Commands {
 			.then(literal("bestellungen").executes(c -> { OrdersScreen.open(null); return 1; }))
 			.then(literal("bestellung").then(argument("nummer", StringArgumentType.word()).executes(c -> { OrdersScreen.open(StringArgumentType.getString(c, "nummer").toUpperCase(java.util.Locale.ROOT)); return 1; })))
 			.then(literal("aufgaben").executes(c -> async(Commands::tasks)))
+			.then(literal("board").executes(c -> { BoardScreen.open(); return 1; }))
 			.then(literal("update").executes(c -> async(ObrienMod.updater::install)))
 			.then(literal("test").executes(c -> { Notifier.toast("Test-Benachrichtigung", "So erscheinen neue Anfragen und Aufgaben."); Notifier.ok("Test-Benachrichtigung gesendet."); return 1; }))
 			.then(literal("ton").then(literal("an").executes(c -> toggle("sound", true))).then(literal("aus").executes(c -> toggle("sound", false))))
@@ -48,7 +49,8 @@ public final class Commands {
 	private static int help() {
 		Notifier.block("Befehle · v" + ObrienMod.version(),
 			row("/obrien bestellungen", "Bestellübersicht (Taste B)"),
-			row("/obrien aufgaben", "deine offenen Aufgaben"),
+			row("/obrien board", "Family Task Board (Taste J)"),
+			row("/obrien aufgaben", "deine offenen Aufgaben im Chat"),
 			row("/obrien status", "Verbindung und Version"),
 			row("/obrien update", "neue Version installieren"),
 			row("/obrien key <Schlüssel>", "Mod mit deinem Konto verbinden"),
@@ -130,7 +132,8 @@ public final class Commands {
 				}
 				lines.add(line);
 			}
-			lines.add(Component.empty().append(Theme.t(" ", Theme.DIM)).append(Notifier.link("[Aufgabenboard öffnen]", ObrienMod.config.base() + "/admin")));
+			lines.add(Component.empty().append(Theme.t(" ", Theme.DIM)).append(Notifier.command("[Board öffnen]", "/obrien board", "Family Task Board im Spiel öffnen (Taste J)"))
+				.append(Theme.t("  ", Theme.DIM)).append(Notifier.link("[Im Browser]", ObrienMod.config.base() + "/admin")));
 			Notifier.block((mine ? "Deine offenen Aufgaben" : "Dringend & überfällig") + " (" + r.get("open").getAsInt() + ")", lines.toArray(new Component[0]));
 		} catch (ShopApi.ApiException e) {
 			Notifier.error(e.getMessage());

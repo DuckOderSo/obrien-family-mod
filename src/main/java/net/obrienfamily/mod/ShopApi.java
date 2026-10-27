@@ -15,7 +15,10 @@ import java.time.Duration;
 public final class ShopApi {
 	public static final class ApiException extends Exception {
 		public final int status;
-		ApiException(int status, String message) { super(message); this.status = status; }
+		/** Antwort der Website bei Fehlern (z. B. die aktuelle Aufgabe bei einem Versionskonflikt 409). */
+		public final JsonObject body;
+		ApiException(int status, String message) { this(status, message, new JsonObject()); }
+		ApiException(int status, String message, JsonObject body) { super(message); this.status = status; this.body = body; }
 	}
 
 	private final ModConfig config;
@@ -36,9 +39,15 @@ public final class ShopApi {
 			.header("Accept", "application/json");
 	}
 
-	public JsonObject get(String path) throws ApiException {
+	public JsonObject get(String path) throws ApiException { return send("GET", path, null); }
+
+	/** Anfrage an die Mod-Schnittstelle (GET, POST, PATCH, DELETE) mit optionalem JSON-Inhalt. */
+	public JsonObject send(String method, String path, JsonObject payload) throws ApiException {
 		try {
-			HttpResponse<byte[]> r = http.send(request(path, Duration.ofSeconds(15)).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+			HttpRequest.Builder b = request(path, Duration.ofSeconds(15));
+			if (payload == null) b.method(method, HttpRequest.BodyPublishers.noBody());
+			else b.header("Content-Type", "application/json").method(method, HttpRequest.BodyPublishers.ofString(payload.toString(), StandardCharsets.UTF_8));
+			HttpResponse<byte[]> r = http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
 			String body = new String(r.body(), StandardCharsets.UTF_8);
 			JsonObject json;
 			try {
@@ -49,7 +58,7 @@ public final class ShopApi {
 			}
 			if (r.statusCode() >= 400) {
 				String msg = json.has("error") ? json.get("error").getAsString() : "Die Website hat mit Fehler " + r.statusCode() + " geantwortet.";
-				throw new ApiException(r.statusCode(), msg);
+				throw new ApiException(r.statusCode(), msg, json);
 			}
 			return json;
 		} catch (ApiException e) {
