@@ -322,13 +322,24 @@ public final class OrdersScreen extends Screen {
 		JsonArray totals = o.has("totals") && o.get("totals").isJsonArray() ? o.getAsJsonArray("totals") : new JsonArray();
 		int req = o.has("request_count") ? o.get("request_count").getAsInt() : 0;
 		MutableComponent c = Component.empty().append(Theme.t("Gesamtwert ", Theme.DIM));
-		if (totals.isEmpty()) return c.append(Theme.i("nach Absprache", Theme.MUTED));
+		if (totals.isEmpty()) return appendPayouts(c.append(Theme.i("nach Absprache", Theme.MUTED)), o);
 		for (int t = 0; t < totals.size(); t++) {
 			JsonObject tt = totals.get(t).getAsJsonObject();
 			if (t > 0) c.append(Theme.t(" · ", Theme.DIM));
 			c.append(Theme.b(Theme.money(tt.get("amount").getAsDouble(), str(tt, "name")), Theme.GOLD));
 		}
 		if (req > 0) c.append(Theme.i("  + " + req + " nach Absprache", Theme.MUTED));
+		appendPayouts(c, o);
+		return c;
+	}
+
+	/** Ankauf (wir zahlen) getrennt anhängen – wird nie mit dem Gesamtwert verrechnet. Ältere Websites liefern kein „payouts“. */
+	private MutableComponent appendPayouts(MutableComponent c, JsonObject o) {
+		JsonArray pay = o.has("payouts") && o.get("payouts").isJsonArray() ? o.getAsJsonArray("payouts") : new JsonArray();
+		for (int t = 0; t < pay.size(); t++) {
+			JsonObject tt = pay.get(t).getAsJsonObject();
+			c.append(Theme.t(t == 0 ? "  · Ankauf " : " · ", Theme.DIM)).append(Theme.b(Theme.money(tt.get("amount").getAsDouble(), str(tt, "name")), Theme.INFO));
+		}
 		return c;
 	}
 
@@ -373,32 +384,44 @@ public final class OrdersScreen extends Screen {
 		for (JsonElement el : lines) {
 			JsonObject l = el.getAsJsonObject();
 			boolean fixed = "fixed".equals(str(l, "type")) && l.has("price") && !l.get("price").isJsonNull();
+			boolean buy = "buy".equals(str(l, "dir"));
+			// Verkaufseinheit/Staffel: price gilt je unitQty Stück, qty = units × unitQty (ältere Websites: Einheit 1).
+			int unitQty = l.has("unit_qty") ? l.get("unit_qty").getAsInt() : 1;
+			double units = l.has("units") ? l.get("units").getAsDouble() : l.get("qty").getAsDouble();
+			String tier = str(l, "tier");
 			if (!fixed) requestCount++;
 			g.fill(x0, y - 1, x0 + 20, y + 19, Theme.argb(0x0B120E));
 			g.item(icon(str(l, "item_id")), x0 + 2, y + 1);
 			int tx = x0 + 26;
 			// Zeile 1: Artikelname (volle Breite)
 			String name = str(l, "name");
-			boolean cut = fit(g, Theme.b(name, Theme.CREAM), tx, y, x1 - tx);
+			MutableComponent head = Theme.b(name, Theme.CREAM);
+			if (buy) head = Component.empty().append(head).append(Theme.t("  Ankauf", Theme.INFO));
+			if (!tier.isEmpty()) head = Component.empty().append(head).append(Theme.t("  " + tier, Theme.GOLD));
+			boolean cut = fit(g, head, tx, y, x1 - tx);
 			if (cut && mx >= tx && mx < x1 && my >= y && my < y + 9 && my >= top && my < bottom) g.setTooltipForNextFrame(Theme.t(name, Theme.CREAM), mx, my);
 			// Zeile 2: Menge · Einzelpreis … Positionspreis (rechts, Gold)
-			Component total = fixed ? Theme.b(Theme.money(l.get("total").getAsDouble(), str(l, "cur")), Theme.GOLD) : Theme.i("nach Absprache", Theme.MUTED);
+			Component total = fixed ? Theme.b(Theme.money(l.get("total").getAsDouble(), str(l, "cur")), buy ? Theme.INFO : Theme.GOLD) : Theme.i("nach Absprache", Theme.MUTED);
 			int tw = font.width(total);
 			g.text(font, total, x1 - tw, y + 11, -1, false);
 			String qty = Theme.num(l.get("qty").getAsDouble());
-			Component unit = fixed ? Theme.t(Theme.money(l.get("price").getAsDouble(), str(l, "cur")), Theme.GOLD) : Theme.i("nach Absprache", Theme.MUTED);
+			String split = unitQty > 1 ? " (" + Theme.num(units) + " × " + Theme.num(unitQty) + ")" : "";
+			String per = unitQty > 1 ? " je " + Theme.num(unitQty) + " Stück" : "";
+			Component unit = fixed ? Component.empty().append(Theme.t(Theme.money(l.get("price").getAsDouble(), str(l, "cur")), Theme.GOLD)).append(Theme.t(per, Theme.DIM))
+				: Theme.i("nach Absprache", Theme.MUTED);
+			String unitLabel = unitQty > 1 ? "   Preis " : "   Einzelpreis ";
 			int room = x1 - tw - tx - 10;
-			// Einzelpreis nie abschneiden: erst kompakt, sonst in eigener Zeile
-			MutableComponent l2 = Component.empty().append(Theme.t("Menge ", Theme.DIM)).append(Theme.t(qty + " Stück", Theme.TEXT))
-				.append(Theme.t("   Einzelpreis ", Theme.DIM)).append(unit);
+			// Preis je Einheit nie abschneiden: erst kompakt, sonst in eigener Zeile
+			MutableComponent l2 = Component.empty().append(Theme.t("Menge ", Theme.DIM)).append(Theme.t(qty + " Stück", Theme.TEXT)).append(Theme.t(split, Theme.DIM))
+				.append(Theme.t(unitLabel, Theme.DIM)).append(unit);
 			if (font.width(l2) > room)
-				l2 = Component.empty().append(Theme.t(qty + " Stk.", Theme.TEXT)).append(Theme.t(" · je ", Theme.DIM)).append(unit);
+				l2 = Component.empty().append(Theme.t(qty + " Stk.", Theme.TEXT)).append(Theme.t(split, Theme.DIM)).append(Theme.t(" · ", Theme.DIM)).append(unit);
 			boolean own = font.width(l2) > room;
-			if (own) l2 = Component.empty().append(Theme.t("Menge ", Theme.DIM)).append(Theme.t(qty + " Stück", Theme.TEXT));
+			if (own) l2 = Component.empty().append(Theme.t("Menge ", Theme.DIM)).append(Theme.t(qty + " Stück", Theme.TEXT)).append(Theme.t(split, Theme.DIM));
 			fit(g, l2, tx, y + 11, room);
 			y += 22;
 			if (own) {
-				fit(g, Component.empty().append(Theme.t("Einzelpreis ", Theme.DIM)).append(unit), tx, y - 1, x1 - tx);
+				fit(g, Component.empty().append(Theme.t(unitLabel.trim() + " ", Theme.DIM)).append(unit), tx, y - 1, x1 - tx);
 				y += 10;
 			}
 			JsonArray ench = l.has("ench") ? l.getAsJsonArray("ench") : new JsonArray();
@@ -415,7 +438,7 @@ public final class OrdersScreen extends Screen {
 		y += 2;
 		for (int x = x0; x < x1; x++) g.fill(x, y, x + 1, y + 1, Theme.argb(Theme.at(new int[]{Theme.DARK, Theme.GOLD, Theme.DARK}, (float) (x - x0) / (x1 - x0))));
 		y += 6;
-		g.text(font, Component.empty().append(Theme.b("GESAMTWERT", Theme.CREAM)).append(Theme.t("  Richtwert, je Währung getrennt", Theme.DIM)), x0, y, -1, true);
+		g.text(font, Component.empty().append(Theme.b("GESAMTWERT", Theme.CREAM)).append(Theme.t(pay(o) ? "  Kunde zahlt, je Währung getrennt" : "  Richtwert, je Währung getrennt", Theme.DIM)), x0, y, -1, true);
 		JsonArray totals = o.has("totals") && o.get("totals").isJsonArray() ? o.getAsJsonArray("totals") : new JsonArray();
 		if (totals.isEmpty()) {
 			y += 12;
@@ -428,6 +451,18 @@ public final class OrdersScreen extends Screen {
 			g.text(font, c, x1 - font.width(c), y, -1, true);
 		}
 		y += 13;
+		// Ankauf: was wir dem Kunden zahlen – eigener Block, nie mit dem Gesamtwert verrechnet
+		JsonArray pay = o.has("payouts") && o.get("payouts").isJsonArray() ? o.getAsJsonArray("payouts") : new JsonArray();
+		if (!pay.isEmpty()) {
+			g.text(font, Component.empty().append(Theme.b("ANKAUF", Theme.INFO)).append(Theme.t("  wir zahlen, nicht verrechnet", Theme.DIM)), x0, y, -1, true);
+			for (JsonElement el : pay) {
+				JsonObject t = el.getAsJsonObject();
+				y += 12;
+				Component c = Theme.b(Theme.money(t.get("amount").getAsDouble(), str(t, "name")), Theme.INFO);
+				g.text(font, c, x1 - font.width(c), y, -1, true);
+			}
+			y += 13;
+		}
 		if (requestCount > 0 && !totals.isEmpty()) {
 			g.text(font, Theme.t("+ " + requestCount + (requestCount == 1 ? " Position" : " Positionen") + " nach Absprache – nicht im Gesamtwert enthalten.", Theme.WARN), x0, y, -1, false);
 			y += 11;
@@ -436,6 +471,8 @@ public final class OrdersScreen extends Screen {
 		y += 14;
 		contentH = y - startY + 6;
 	}
+
+	private static boolean pay(JsonObject o) { return o.has("payouts") && o.get("payouts").isJsonArray() && !o.getAsJsonArray("payouts").isEmpty(); }
 
 	private int field(GuiGraphicsExtractor g, String label, String value, int x0, int y, int x1) {
 		if (value.isEmpty()) return y;
