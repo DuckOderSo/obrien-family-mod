@@ -85,51 +85,60 @@ public final class BoardScreen extends BoardUi {
 		frame(100_000);
 		int x = px + 6, y = top + 4, right = px + pw - 6;
 
-		search = new EditBox(font, x, y, 112, 18, Component.literal("Suche"));
-		search.setHint(Theme.t("Suche in Titel und Text …", Theme.DIM));
+		// Breite Fenster: alle Filter nebeneinander wie auf der Website. Schmale Fenster: Suche, „Filter ▾“ (mit Untermenüs), Sortierung.
+		String sortLabel = switch (sort) { case "due" -> "Sortierung: Fälligkeit"; case "created" -> "Sortierung: Neueste"; default -> "Sortierung: Priorität"; };
+		List<Object[]> items = new ArrayList<>(); // Beschriftung, Aktion
+		items.add(new Object[]{personLabel() + " ▾", (Consumer<Button>) this::personMenu});
+		items.add(new Object[]{(fPriority.isEmpty() ? "Alle Prioritäten" : Board.str(Board.I.priority(fPriority), "label")) + " ▾", (Consumer<Button>) this::prioMenu});
+		items.add(new Object[]{(fTag.isEmpty() ? "Alle Tags" : fTag) + " ▾", (Consumer<Button>) this::tagMenu});
+		items.add(new Object[]{dueLabel(fDue) + " ▾", (Consumer<Button>) this::dueMenu});
+		items.add(new Object[]{sortLabel + " ▾", (Consumer<Button>) this::sortMenu});
+		String mineLabel = "Meine Aufgaben" + (meKey() != null ? " (" + Board.I.memberName(meKey()) + ")" : "");
+		int aw = font.width("Archiv (000)") + 12, bw = font.width("Board") + 14;
+		int need = 116 + aw + bw + 8 + (filtered() ? font.width("Filter zurücksetzen") + 16 : 0);
+		for (Object[] it : items) need += font.width((String) it[0]) + 16;
+		for (String c : new String[]{"✔ " + mineLabel, "✔ Überfällig", "✔ Kritisch"}) need += font.width(c) + 16;
+		boolean wide = need <= right - x;
+
+		int sw = wide ? 112 : Math.max(80, Math.min(140, (right - x) - aw - bw - 8 - 150 - 8));
+		search = new EditBox(font, x, y, sw, 18, Component.literal("Suche"));
+		search.setHint(Theme.t("Suche …", Theme.DIM));
 		search.setMaxLength(80);
 		search.setValue(q);
 		search.setResponder(v -> q = v);
 		addRenderableWidget(search);
-		x += 116;
-
-		List<Object[]> items = new ArrayList<>(); // Beschriftung, Breite, Aktion (Consumer<Button>)
-		items.add(new Object[]{personLabel(), (Consumer<Button>) this::personMenu});
-		items.add(new Object[]{fPriority.isEmpty() ? "Alle Prioritäten" : Board.str(Board.I.priority(fPriority), "label"), (Consumer<Button>) this::prioMenu});
-		items.add(new Object[]{fTag.isEmpty() ? "Alle Tags" : fTag, (Consumer<Button>) this::tagMenu});
-		items.add(new Object[]{dueLabel(fDue), (Consumer<Button>) this::dueMenu});
-		items.add(new Object[]{switch (sort) { case "due" -> "Sortierung: Fälligkeit"; case "created" -> "Sortierung: Neueste"; default -> "Sortierung: Priorität"; }, (Consumer<Button>) this::sortMenu});
-		int rowY = y;
-		for (Object[] it : items) {
-			String label = it[0] + " ▾";
-			int w = Math.min(120, font.width(label) + 12);
-			if (x + w > right) { x = px + 6; rowY += 21; }
-			@SuppressWarnings("unchecked") Consumer<Button> act = (Consumer<Button>) it[1];
-			Button b = addRenderableWidget(Button.builder(Component.literal(label), act::accept).bounds(x, rowY, w, 18).build());
-			if (font.width(label) + 12 > w) b.setTooltip(Tooltip.create(Component.literal(label)));
-			x += w + 4;
+		x += sw + 4;
+		if (wide) {
+			for (Object[] it : items) {
+				String label = (String) it[0];
+				int w = font.width(label) + 12;
+				@SuppressWarnings("unchecked") Consumer<Button> act = (Consumer<Button>) it[1];
+				addRenderableWidget(Button.builder(Component.literal(label), act::accept).bounds(x, y, w, 18).build());
+				x += w + 4;
+			}
+			x = chip(mineLabel, mine, Theme.EMERALD, x, y, this::toggleMine);
+			x = chip("Überfällig", overdueOnly, Theme.ERR, x, y, b -> { overdueOnly = !overdueOnly; rebuildWidgets(); });
+			x = chip("Kritisch", criticalOnly, 0xFF6B60, x, y, b -> { criticalOnly = !criticalOnly; rebuildWidgets(); });
+			if (filtered()) addRenderableWidget(Button.builder(Theme.t("Filter zurücksetzen", Theme.GOLD), b -> { resetFilters(); rebuildWidgets(); }).bounds(x, y, font.width("Filter zurücksetzen") + 12, 18).build());
+		} else {
+			int n = activeFilters();
+			Component fl = n > 0 ? Theme.t("Filter (" + n + ") ▾", Theme.GOLD) : Component.literal("Filter ▾");
+			int fw = font.width(fl) + 12;
+			addRenderableWidget(Button.builder(fl, this::filterMenu).bounds(x, y, fw, 18).build());
+			x += fw + 4;
+			String sl = switch (sort) { case "due" -> "Fälligkeit ▾"; case "created" -> "Neueste ▾"; default -> "Priorität ▾"; };
+			int sw2 = Math.min(right - aw - bw - 8 - x, font.width(sl) + 12);
+			if (sw2 > 30) {
+				Button sb = addRenderableWidget(Button.builder(Component.literal(sl), this::sortMenu).bounds(x, y, sw2, 18).build());
+				sb.setTooltip(Tooltip.create(Component.literal(sortLabel)));
+			}
 		}
-		// Schnellfilter und Ansicht
-		String meName = Board.I.memberName(meKey());
-		x = chip("Meine Aufgaben" + (meKey() != null ? " (" + meName + ")" : ""), mine, Theme.EMERALD, x, rowY, right, b -> toggleMine());
-		rowY = lastRowY;
-		x = chip("Überfällig", overdueOnly, Theme.ERR, x, rowY, right, b -> { overdueOnly = !overdueOnly; rebuildWidgets(); });
-		rowY = lastRowY;
-		x = chip("Kritisch", criticalOnly, 0xFF6B60, x, rowY, right, b -> { criticalOnly = !criticalOnly; rebuildWidgets(); });
-		rowY = lastRowY;
-		if (filtered()) {
-			int w = font.width("Filter zurücksetzen") + 12;
-			if (x + w > right) { x = px + 6; rowY += 21; }
-			addRenderableWidget(Button.builder(Theme.t("Filter zurücksetzen", Theme.GOLD), b -> { resetFilters(); rebuildWidgets(); }).bounds(x, rowY, w, 18).build());
-			x += w + 4;
-		}
-		int aw = font.width("Archiv (000)") + 12, bw = font.width("Board") + 14;
-		if (x + aw + bw + 4 > right) { x = px + 6; rowY += 21; }
-		Button bb = addRenderableWidget(Button.builder(Component.literal("Board"), b -> { archiveView = false; scroll = 0; rebuildWidgets(); }).bounds(right - aw - bw - 4, rowY, bw, 18).build());
+		Button bb = addRenderableWidget(Button.builder(Component.literal("Board"), b -> { archiveView = false; scroll = 0; rebuildWidgets(); }).bounds(right - aw - bw - 4, y, bw, 18).build());
 		String arch = "Archiv" + (Board.I.archived != null ? " (" + Board.I.archived.size() + ")" : "");
-		Button ab = addRenderableWidget(Button.builder(Component.literal(arch), b -> { archiveView = true; scroll = 0; Board.I.loadArchive(); rebuildWidgets(); }).bounds(right - aw, rowY, aw, 18).build());
+		Button ab = addRenderableWidget(Button.builder(Component.literal(arch), b -> { archiveView = true; scroll = 0; Board.I.loadArchive(); rebuildWidgets(); }).bounds(right - aw, y, aw, 18).build());
 		bb.active = archiveView;
 		ab.active = !archiveView;
+		int rowY = y;
 		boardTop = rowY + 22;
 		top = boardTop; // Bildlaufbereich der Archivliste
 
@@ -145,14 +154,31 @@ public final class BoardScreen extends BoardUi {
 		clampH();
 	}
 
-	private int lastRowY;
-	private int chip(String label, boolean on, int color, int x, int y, int right, Button.OnPress press) {
+	private int chip(String label, boolean on, int color, int x, int y, Button.OnPress press) {
 		MutableComponent c = on ? Theme.t("✔ " + label, color) : Theme.t(label, Theme.TEXT);
 		int w = font.width(c) + 12;
-		if (x + w > right) { x = px + 6; y += 21; }
 		addRenderableWidget(Button.builder(c, press).bounds(x, y, w, 18).build());
-		lastRowY = y;
 		return x + w + 4;
+	}
+
+	private int activeFilters() {
+		int n = 0;
+		for (boolean b : new boolean[]{!fAssignee.isEmpty(), !fPriority.isEmpty(), !fTag.isEmpty(), !fDue.isEmpty(), mine, overdueOnly, criticalOnly}) if (b) n++;
+		return n;
+	}
+
+	/** Kompakte Filterauswahl für schmale Fenster: alle Filter der Website in einem Menü, Auswahl in Untermenüs. */
+	private void filterMenu(Button b) {
+		List<Option> o = new ArrayList<>();
+		o.add(new Option(Theme.t("Mitglied: ", Theme.DIM).append(Theme.t(personLabel() + " ›", Theme.TEXT)), () -> personMenu(b), false));
+		o.add(new Option(Theme.t("Priorität: ", Theme.DIM).append(Theme.t((fPriority.isEmpty() ? "Alle" : Board.str(Board.I.priority(fPriority), "label")) + " ›", Theme.TEXT)), () -> prioMenu(b), false));
+		o.add(new Option(Theme.t("Tag: ", Theme.DIM).append(Theme.t((fTag.isEmpty() ? "Alle" : fTag) + " ›", Theme.TEXT)), () -> tagMenu(b), false));
+		o.add(new Option(Theme.t("Fälligkeit: ", Theme.DIM).append(Theme.t(dueLabel(fDue) + " ›", Theme.TEXT)), () -> dueMenu(b), false));
+		o.add(new Option(Theme.t("Meine Aufgaben" + (meKey() != null ? " (" + Board.I.memberName(meKey()) + ")" : ""), Theme.EMERALD), () -> toggleMine(b), mine));
+		o.add(new Option(Theme.t("Überfällig", Theme.ERR), () -> { overdueOnly = !overdueOnly; rebuildWidgets(); }, overdueOnly));
+		o.add(new Option(Theme.t("Kritisch", 0xFF6B60), () -> { criticalOnly = !criticalOnly; rebuildWidgets(); }, criticalOnly));
+		if (filtered()) o.add(new Option(Theme.t("Filter zurücksetzen", Theme.GOLD), () -> { resetFilters(); rebuildWidgets(); }, false));
+		openMenu(b, o);
 	}
 
 	private String personLabel() {
@@ -239,7 +265,7 @@ public final class BoardScreen extends BoardUi {
 
 	private void setF(Runnable r) { r.run(); rebuildWidgets(); }
 
-	private void toggleMine() {
+	private void toggleMine(Button anchor) {
 		if (meKey() == null) {
 			// Gemeinsamer Admin-Zugang: erst wählen, für wen „Meine Aufgaben“ gilt (wie „Ansicht für“ auf der Website).
 			List<Option> o = new ArrayList<>();
@@ -247,8 +273,7 @@ public final class BoardScreen extends BoardUi {
 				String k = Board.str(e.getAsJsonObject(), "key");
 				o.add(new Option(Theme.t("Ansicht für " + Board.I.memberName(k), Theme.TEXT), () -> { chosenMe = k; mine = true; rebuildWidgets(); }, false));
 			}
-			Button anchor = (Button) children().stream().filter(c -> c instanceof Button bt && bt.getMessage().getString().startsWith("Meine")).findFirst().orElse(null);
-			if (anchor != null) openMenu(anchor, o);
+			openMenu(anchor, o);
 			return;
 		}
 		mine = !mine;
@@ -615,8 +640,11 @@ public final class BoardScreen extends BoardUi {
 		g.fill(x, y, x + 2, y + h, Theme.argb(prioStripe(p)));
 		int tx = x + 6, ty = y + 5, tw = w - 10;
 		JsonObject pr = Board.I.priority(p);
-		g.text(font, Theme.t(Board.str(pr, "icon") + " " + Board.str(pr, "label"), prioColor(p)), tx, ty, -1, false);
-		if (od) pill(g, "Überfällig", 0xB33A32, x + w - font.width("Überfällig") - 12, ty - 2, true);
+		String prText = Board.str(pr, "icon") + " " + Board.str(pr, "label");
+		int odW = od ? font.width("Überfällig") + 8 : 0;
+		if (od && font.width(prText) + odW + 6 > tw) prText = Board.str(pr, "icon"); // schmale Spalte: nur Symbol
+		g.text(font, Theme.t(prText, prioColor(p)), tx, ty, -1, false);
+		if (od) pill(g, "Überfällig", 0xB33A32, x + w - odW - 4, ty - 2, true);
 		ty += 11;
 		ty = wrap(g, Theme.b(Board.str(t, "title"), done ? Theme.MUTED : Theme.CREAM), tx, ty, tw, 3);
 		if (!Board.str(t, "description").isEmpty()) ty = wrap(g, Theme.t(desc(t), Theme.DIM), tx, ty, tw, 2);
