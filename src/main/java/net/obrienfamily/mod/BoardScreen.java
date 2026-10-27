@@ -373,7 +373,8 @@ public final class BoardScreen extends BoardUi {
 	public boolean keyPressed(KeyEvent e) {
 		if (menuOpen()) return super.keyPressed(e);
 		if (dragging && e.key() == InputConstants.KEY_ESCAPE) { dragging = false; pressed = null; return true; }
-		if (getFocused() != search || !search.isFocused()) {
+		// Pfeiltasten scrollen das Board – außer beim Bearbeiten eines Suchtexts
+		if (!(search.isFocused() && !search.getValue().isEmpty()) || e.key() == InputConstants.KEY_F5) {
 			if (e.key() == InputConstants.KEY_LEFT) { hx -= colW / 2; clampH(); return true; }
 			if (e.key() == InputConstants.KEY_RIGHT) { hx += colW / 2; clampH(); return true; }
 			if (e.key() == InputConstants.KEY_F5) { Board.I.load(false); if (archiveView) Board.I.loadArchive(); return true; }
@@ -421,14 +422,15 @@ public final class BoardScreen extends BoardUi {
 				if (h.restore()) restore(h.task()); else askDelete(h.task());
 				return true;
 			}
-			for (Hit h : hits) if (inside(h, e.x(), e.y())) { openDetail(h.task()); return true; }
+			if (e.y() >= boardTop && e.y() < bottom) for (Hit h : hits) if (inside(h, e.x(), e.y())) { openDetail(h.task()); return true; }
 			return false;
 		}
 		for (int[] p : plus) if (e.x() >= p[0] && e.x() < p[0] + p[2] && e.y() >= p[1] && e.y() < p[1] + p[3]) {
 			openForm(null, Board.str(Board.I.list("statuses").get(p[4]).getAsJsonObject(), "key"));
 			return true;
 		}
-		for (Hit h : hits) if (inside(h, e.x(), e.y())) {
+		boolean inCards = e.y() >= boardTop + COL_HEAD && e.y() < bottom - 2 && e.x() >= px + 1 && e.x() < px + pw - 1;
+		if (inCards) for (Hit h : hits) if (inside(h, e.x(), e.y())) {
 			if (e.button() == InputConstants.MOUSE_BUTTON_RIGHT) { moveMenu(h.task(), (int) e.x(), (int) e.y()); return true; }
 			if (e.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 				pressed = h.task(); pressX = e.x(); pressY = e.y(); offX = e.x() - h.x(); offY = e.y() - h.y(); pressW = h.w(); pressH = h.h();
@@ -516,6 +518,8 @@ public final class BoardScreen extends BoardUi {
 		hits.clear();
 		plus.clear();
 		archHits.clear();
+		int menuX = mx, menuY = my;
+		if (menuOpen()) { mx = -1; my = -1; } // bei offenem Menü keine Hover-Hinweise darunter
 		g.enableScissor(px + 1, boardTop, px + pw - 1, bottom);
 		if (b.meta == null && b.loading) center(g, Theme.t("Aufgaben werden geladen …", Theme.MUTED), boardTop + 24);
 		else if (b.meta == null && b.error != null) {
@@ -536,7 +540,7 @@ public final class BoardScreen extends BoardUi {
 		super.extractRenderState(g, mx, my, pt);
 		drawToasts(g);
 		if (dragging && pressed != null) drawGhost(g, mx, my);
-		drawMenu(g, mx, my);
+		drawMenu(g, menuX, menuY);
 	}
 
 	private boolean isToday(String iso) {
@@ -585,7 +589,8 @@ public final class BoardScreen extends BoardUi {
 				int h = cardHeight(t, cardW);
 				if (y + h >= colTop && y <= colBottom) {
 					boolean isDragged = dragging && pressed != null && Board.str(pressed, "id").equals(Board.str(t, "id"));
-					drawCard(g, t, x + 4, y, cardW, h, isDragged ? -1 : mx, my, isDragged);
+					boolean inCol = my >= colTop && my < colBottom && mx >= Math.max(x, px) && mx < Math.min(x + colW, px + pw);
+					drawCard(g, t, x + 4, y, cardW, h, isDragged || !inCol ? -1 : mx, my, isDragged);
 					int vy = Math.max(y, colTop), vh = Math.min(y + h, colBottom) - vy;
 					if (vh > 0) hits.add(new Hit(t, x + 4, y, cardW, h, i));
 				}
