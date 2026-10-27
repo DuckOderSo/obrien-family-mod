@@ -25,7 +25,7 @@ import java.util.List;
  */
 public final class TaskDetailScreen extends BoardUi {
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm");
-	private static final int LABEL = 92;
+	private int LABEL = 92; // Breite der Beschriftungsspalte, aus dem längsten Text berechnet
 
 	private final BoardScreen board;
 	private final String id;
@@ -62,6 +62,7 @@ public final class TaskDetailScreen extends BoardUi {
 	@Override
 	protected void init() {
 		frame(540);
+		LABEL = font.width("Zuletzt aktualisiert") + 10;
 		bottom = py + ph - FOOTER - (comments && data != null ? 24 : 0);
 		int by = py + ph - 23, x = px + 6;
 		addRenderableWidget(button("‹ Board", b -> onClose(), x, by, 54));
@@ -69,7 +70,7 @@ public final class TaskDetailScreen extends BoardUi {
 			JsonObject t = task();
 			boolean narrow = pw < 400;
 			int bx = x + 58;
-			if (!archived()) { addRenderableWidget(Button.builder(Theme.b("Bearbeiten", Theme.GOLD), b -> edit()).bounds(bx, by, 62, 18).build()); bx += 66; }
+			if (!archived()) { int ew = font.width(Theme.b("Bearbeiten", Theme.GOLD)) + 12; addRenderableWidget(Button.builder(Theme.b("Bearbeiten", Theme.GOLD), b -> edit()).bounds(bx, by, ew, 18).build()); bx += ew + 4; }
 			addRenderableWidget(button(narrow ? "Kopie" : "Duplizieren", b -> Board.I.duplicate(t, n -> minecraft.gui.setScreen(new TaskDetailScreen(board, Board.str(n, "id")))), bx, by, narrow ? 40 : 66));
 			bx += narrow ? 44 : 70;
 			if (archived()) { addRenderableWidget(button("Wiederherstellen", b -> setArchived(false), bx, by, 90)); bx += 94; }
@@ -273,7 +274,7 @@ public final class TaskDetailScreen extends BoardUi {
 		g.text(font, Theme.t("Status", Theme.DIM), x0, y + 5, -1, false);
 		y += 21;
 		g.text(font, Theme.t("Verantwortlich", Theme.DIM), x0, y + 5, -1, false);
-		avatar(g, Board.str(t, "assignee"), x0 + LABEL - 16, y + 3, 12);
+		avatar(g, Board.str(t, "assignee"), x0 + LABEL - 6 - avatarW(Board.str(t, "assignee"), 12), y + 3, 12);
 		y += 21;
 		for (String[] f : facts(t)) {
 			g.text(font, Theme.t(f[0], Theme.DIM), x0, y, -1, false);
@@ -308,7 +309,7 @@ public final class TaskDetailScreen extends BoardUi {
 				JsonObject c = e.getAsJsonObject();
 				String author = Board.str(c, "author");
 				int ax = x0;
-				if (Board.I.member(author) != null) { avatar(g, author, x0, y, 10); ax += 13; }
+				if (Board.I.member(author) != null) { avatar(g, author, x0, y, 10); ax += avatarW(author, 10) + 3; }
 				g.text(font, Theme.b(Board.str(c, "author_name"), Theme.CREAM), ax, y + 1, -1, false);
 				String when = time(Board.str(c, "created_at"));
 				g.text(font, Theme.t(when, Theme.DIM), x1 - font.width(when), y + 1, -1, false);

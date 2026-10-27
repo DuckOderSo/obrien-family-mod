@@ -58,6 +58,8 @@ public final class BoardScreen extends BoardUi {
 	private int pressW, pressH;
 
 	private EditBox search;
+	private int shownArch = -2;
+	private boolean metaShown;
 
 	public BoardScreen() {
 		super(Component.literal("O’Brien – Family Task Board"), null);
@@ -362,6 +364,9 @@ public final class BoardScreen extends BoardUi {
 	public void tick() {
 		// Aktuell halten ohne Echtzeit-Server: alle 15 Sekunden im Hintergrund neu laden (Website: beim Fokus und jede Minute).
 		if (!dragging && !Board.I.loading && System.currentTimeMillis() - Board.I.lastLoad > 15_000) Board.I.load(true);
+		// Anzahl im Archiv-Knopf und Filterbeschriftungen aktuell halten, sobald neue Daten da sind
+		int arch = Board.I.archived == null ? -1 : Board.I.archived.size();
+		if ((arch != shownArch || (Board.I.meta != null) != metaShown) && !menuOpen() && !dragging) { shownArch = arch; metaShown = Board.I.meta != null; rebuildWidgets(); }
 	}
 
 	@Override
@@ -664,7 +669,7 @@ public final class BoardScreen extends BoardUi {
 		// Fuß
 		int fy = y + h - 13;
 		avatar(g, Board.str(t, "assignee"), tx, fy, 10);
-		int fx = tx + 14;
+		int fx = tx + avatarW(Board.str(t, "assignee"), 10) + 4;
 		String due = Board.str(t, "due_text");
 		int cmts = t.has("comments") ? t.get("comments").getAsInt() : 0;
 		String cc = cmts > 0 ? "✉ " + cmts : "";
@@ -717,10 +722,11 @@ public final class BoardScreen extends BoardUi {
 				fakeButton(g, "Löschen", bx2, y + 5, dw, mx, my, Theme.ERR);
 				archHits.add(new ArchHit(t, true, bx1, y + 5, rw, 18));
 				archHits.add(new ArchHit(t, false, bx2, y + 5, dw, 18));
-				fit(g, Theme.b(Board.str(t, "title"), Theme.CREAM), x0 + 24, y + 5, bx1 - x0 - 30);
+				int ax = x0 + 10 + avatarW(Board.str(t, "assignee"), 12);
+				fit(g, Theme.b(Board.str(t, "title"), Theme.CREAM), ax, y + 5, bx1 - ax - 6);
 				String when = "";
 				try { when = OffsetDateTime.parse(Board.str(t, "archived_at")).atZoneSameInstant(ZoneId.of("Europe/Berlin")).format(STAMP); } catch (Exception ignored) {}
-				fit(g, Theme.t(Board.I.statusLabel(Board.str(t, "status")) + " · " + Board.str(Board.I.priority(Board.str(t, "priority")), "label") + " · archiviert " + when, Theme.DIM), x0 + 24, y + 16, bx1 - x0 - 30);
+				fit(g, Theme.t(Board.I.statusLabel(Board.str(t, "status")) + " · " + Board.str(Board.I.priority(Board.str(t, "priority")), "label") + " · archiviert " + when, Theme.DIM), ax, y + 16, bx1 - ax - 6);
 				hits.add(new Hit(t, x0, y, bx1 - x0 - 4, h, -1));
 			}
 			y += h + 4;

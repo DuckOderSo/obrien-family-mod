@@ -133,9 +133,10 @@ public final class TaskFormScreen extends BoardUi {
 
 		int by = py + ph - 23, right = px + pw - 6;
 		String save = busy ? "Speichert …" : base == null ? "Aufgabe anlegen" : "Änderungen speichern";
-		Button s = addRenderableWidget(Button.builder(Theme.b(save, Theme.GOLD), b -> submit()).bounds(right - 120, by, 120, 18).build());
+		int sw = font.width(Theme.b(save, Theme.GOLD)) + 14;
+		Button s = addRenderableWidget(Button.builder(Theme.b(save, Theme.GOLD), b -> submit()).bounds(right - sw, by, sw, 18).build());
 		s.active = !busy;
-		addRenderableWidget(button("Abbrechen", b -> onClose(), right - 120 - 4 - 70, by, 70));
+		addRenderableWidget(button("Abbrechen", b -> onClose(), right - sw - 4 - 70, by, 70));
 		placeScrolled();
 		if (base == null && title.isEmpty()) setInitialFocus(titleBox);
 	}

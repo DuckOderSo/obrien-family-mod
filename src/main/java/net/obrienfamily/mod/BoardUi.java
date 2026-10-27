@@ -128,14 +128,21 @@ abstract class BoardUi extends Screen {
 		return w;
 	}
 
+	/** Breite eines Avatars (zweistellige Kürzel brauchen mehr Platz als ein kleines Quadrat). */
+	protected int avatarW(String key, int size) {
+		JsonObject m = Board.I.member(key);
+		return Math.max(size, font.width(m == null ? "–" : Board.str(m, "initials")) + 4);
+	}
+
 	/** Kürzel des Mitglieds auf seiner Farbe (wie die runden Avatare der Website), „–“ für nicht zugewiesen. */
 	protected void avatar(GuiGraphicsExtractor g, String key, int x, int y, int size) {
 		JsonObject m = Board.I.member(key);
 		int c = m == null ? 0x2A3A30 : hex(Board.str(m, "color"), 0x3F9D54);
 		String ini = m == null ? "–" : Board.str(m, "initials");
-		g.fill(x, y, x + size, y + size, Theme.argb(c));
-		g.outline(x, y, size, size, Theme.argb(0x000000, 90));
-		g.text(font, Theme.t(ini, m == null ? Theme.MUTED : 0xFFFFFF), x + (size - font.width(ini)) / 2 + 1, y + (size - 8) / 2 + 1, -1, true);
+		int w = Math.max(size, font.width(ini) + 4);
+		g.fill(x, y, x + w, y + size, Theme.argb(c));
+		g.outline(x, y, w, size, Theme.argb(0x000000, 90));
+		g.text(font, Theme.t(ini, m == null ? Theme.MUTED : 0xFFFFFF), x + (w - font.width(ini)) / 2 + 1, y + (size - 8) / 2 + 1, -1, true);
 	}
 
 	/** Hinweis-Meldungen (✓ / ⚠) unten rechts über der Fußzeile, verschwinden nach einigen Sekunden. */
