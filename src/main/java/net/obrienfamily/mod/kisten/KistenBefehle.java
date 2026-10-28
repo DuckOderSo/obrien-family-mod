@@ -90,9 +90,10 @@ public final class KistenBefehle {
 		return was + " " + e.getMessage();
 	}
 
+	/** Nur abweisen, wenn sicher ein Spieler-Schlüssel eingetragen ist – die eigentliche Prüfung macht immer der Server. */
 	private static boolean admin() {
 		if (ObrienMod.scope() == null) ObrienMod.refreshScope();
-		return ObrienMod.isAdminKey();
+		return !"chests".equals(ObrienMod.scope());
 	}
 
 	static String str(JsonObject o, String k) { return o != null && o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsString() : ""; }
@@ -210,7 +211,7 @@ public final class KistenBefehle {
 		}
 		List<Component> lines = new ArrayList<>();
 		lines.add(Theme.t(" " + total + (total == 1 ? " registrierter Lagerort" : " registrierte Lagerorte") + (all ? " · alle Dimensionen" : " im Umkreis von " + RADIUS + " Blöcken"), Theme.TEXT));
-		int markiert = 0, shown = 0;
+		int markiert = 0, shown = 0, fehlt = 0;
 		boolean meldenErlaubt = ObrienMod.isAdminKey();
 		for (JsonElement el : res) {
 			JsonObject loc = el.getAsJsonObject();
@@ -223,7 +224,14 @@ public final class KistenBefehle {
 			lines.add(l1);
 			Live lv = live(loc, o.dim());
 			JsonObject item = loc.getAsJsonArray("items").get(0).getAsJsonObject();
-			lines.add(Component.empty().append(Theme.t("     ", Theme.DIM)).append(lv.geladen() ? liveText(lv) : status(loc)).append(Theme.t(" · ", Theme.DIM)).append(bestand(item)));
+			MutableComponent l2 = Component.empty().append(Theme.t("     ", Theme.DIM)).append(lv.geladen() ? liveText(lv) : status(loc)).append(Theme.t(" · ", Theme.DIM)).append(bestand(item));
+			// Zerstörte Kiste (gerade gesehen): Admins können die veraltete Registrierung direkt entfernen.
+			if (lv.geladen() && !lv.vorhanden()) {
+				fehlt++;
+				if (meldenErlaubt) l2.append(Theme.t("  ", Theme.DIM)).append(Notifier.command("[Registrierung entfernen]", "/obrien removekiste " + it.id() + " @" + p.getX() + "," + p.getY() + "," + p.getZ(),
+					"Entfernt nur diese veraltete Zuordnung"));
+			}
+			lines.add(l2);
 			// Hervorhebung nur für tatsächlich gesehene Kisten in der Nähe.
 			if (lv.vorhanden() && (!loc.has("distance") || loc.get("distance").isJsonNull() || loc.get("distance").getAsDouble() <= 64)) {
 				KistenOrt.Erkennung e = KistenOrt.erkenne(Minecraft.getInstance().level, p);
@@ -235,8 +243,9 @@ public final class KistenBefehle {
 		}
 		if (total > 10) lines.add(Component.empty().append(Theme.t(" + " + (total - 10) + " weitere  ", Theme.DIM))
 			.append(Notifier.command("[Liste]", "/obrien listkisten " + it.id(), "Alle Lagerorte für dieses Item seitenweise")));
-		lines.add(Theme.t(markiert > 0 ? " ✦ " + markiert + (markiert == 1 ? " Kiste" : " Kisten") + " 10 Sekunden lang golden markiert."
-			: " Keine Kiste in Sichtweite geladen – Lagerorte werden nur als Koordinaten angezeigt.", Theme.DIM));
+		if (markiert > 0) lines.add(Theme.t(" ✦ " + markiert + (markiert == 1 ? " Kiste" : " Kisten") + " 10 Sekunden lang golden markiert.", Theme.DIM));
+		else if (fehlt > 0) lines.add(Theme.t(" Nichts markiert – an der registrierten Stelle steht keine Kiste mehr.", Theme.DIM));
+		else lines.add(Theme.t(" Nichts markiert – die Kisten sind nicht geladen. Entfernte Lagerorte werden nur als Koordinaten angezeigt.", Theme.DIM));
 		Notifier.block(it.name() + ": " + total + (total == 1 ? " Lagerort" : " Lagerorte"), lines.toArray(new Component[0]));
 	}
 
@@ -282,19 +291,27 @@ public final class KistenBefehle {
 	private static int remove(String arg) {
 		Ort o = ort(); if (o == null) return 0;
 		KistenOrt.Erkennung e = KistenOrt.anvisiert();
-		if (e.ziel() == null) { Notifier.error(e.fehler()); return 0; }
-		KistenOrt.Ziel z = e.ziel();
 		// Klickbare Auswahl enthält „@x,y,z“: So wird nie versehentlich eine andere Kiste geändert.
 		String a = arg.trim();
 		int at = a.lastIndexOf('@');
+		BlockPos soll = null;
 		if (at >= 0) {
 			String[] c = a.substring(at + 1).split(",");
-			try {
-				BlockPos soll = new BlockPos(Integer.parseInt(c[0]), Integer.parseInt(c[1]), Integer.parseInt(c[2]));
-				if (!soll.equals(z.a()) && !soll.equals(z.b())) { Notifier.error("Du schaust inzwischen auf eine andere Kiste. Bitte schau wieder auf die Kiste " + coords(soll) + "."); return 0; }
-			} catch (Exception ex) { Notifier.error("Ungültige Auswahl."); return 0; }
+			try { soll = new BlockPos(Integer.parseInt(c[0]), Integer.parseInt(c[1]), Integer.parseInt(c[2])); }
+			catch (Exception ex) { Notifier.error("Ungültige Auswahl."); return 0; }
 			a = a.substring(0, at).trim();
 		}
+		KistenOrt.Ziel z;
+		if (e.ziel() != null) {
+			z = e.ziel();
+			if (soll != null && !soll.equals(z.a()) && !soll.equals(z.b())) { Notifier.error("Du schaust inzwischen auf eine andere Kiste. Bitte schau wieder auf die Kiste " + coords(soll) + "."); return 0; }
+		} else if (soll != null) {
+			// Veraltete Registrierung einer zerstörten Kiste: nur erlaubt, wenn die Mod an dieser Stelle gerade sicher keine Kiste sieht.
+			Minecraft lv = Minecraft.getInstance();
+			if (!lv.level.hasChunk(soll.getX() >> 4, soll.getZ() >> 4)) { Notifier.error("Diese Stelle ist nicht geladen – geh näher heran, damit die Mod prüfen kann, ob dort noch eine Kiste steht."); return 0; }
+			if (KistenOrt.erkenne(lv.level, soll).ziel() != null) { Notifier.error("Dort steht noch eine Kiste. Schau sie an, um die Zuordnung zu entfernen."); return 0; }
+			z = new KistenOrt.Ziel("single", soll, null);
+		} else { Notifier.error(e.fehler()); return 0; }
 		String lower = a.toLowerCase(Locale.ROOT);
 		ItemSuche.Eintrag gewaehlt = null;
 		Minecraft mc = Minecraft.getInstance();

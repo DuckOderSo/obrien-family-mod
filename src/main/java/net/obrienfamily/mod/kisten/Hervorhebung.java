@@ -18,7 +18,7 @@ public final class Hervorhebung {
 
 	private record Box(BlockPos a, BlockPos b, String dim, long bis) {}
 	private static final List<Box> AKTIV = new ArrayList<>();
-	private static final DustParticleOptions GOLD = new DustParticleOptions(0xE5BB4F, 0.9F);
+	private static final DustParticleOptions GOLD = new DustParticleOptions(0xE5BB4F, 0.55F);
 	private static int takt;
 
 	public static void markiere(KistenOrt.Ziel z, String dim) {
@@ -54,7 +54,7 @@ public final class Hervorhebung {
 		for (int[] k : kanten) {
 			double[] p = ecken[k[0]], q = ecken[k[1]];
 			double len = Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]);
-			int n = Math.max(2, (int) Math.round(len / 0.25));
+			int n = Math.max(2, (int) Math.round(len / 0.2));
 			for (int i = 0; i <= n; i++) {
 				double t = (double) i / n;
 				mc.level.addParticle(GOLD, p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t, p[2] + (q[2] - p[2]) * t, 0, 0, 0);

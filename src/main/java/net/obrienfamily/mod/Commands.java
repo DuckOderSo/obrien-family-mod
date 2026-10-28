@@ -77,8 +77,10 @@ public final class Commands {
 		ObrienMod.resetSession();
 		return async(() -> {
 			try {
-				JsonObject r = ObrienMod.api.get("/api/mod/feed");
-				Notifier.ok("Verbunden als " + r.get("name").getAsString() + " – Benachrichtigungen sind aktiv.");
+				JsonObject r = ObrienMod.api.get("/api/mod/me");
+				ObrienMod.refreshScope();
+				if ("admin".equals(r.get("scope").getAsString())) Notifier.ok("Verbunden als " + r.get("name").getAsString() + " – Benachrichtigungen sind aktiv.");
+				else Notifier.ok("Verbunden als " + r.get("name").getAsString() + " – Spieler-Schlüssel: Kistensuche ist aktiv (/obrien findkiste).");
 			} catch (ShopApi.ApiException e) {
 				Notifier.error("Schlüssel gespeichert, aber: " + e.getMessage());
 			}
