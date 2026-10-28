@@ -34,6 +34,12 @@ public final class KistenOrt {
 		return switch (kind) { case "double" -> "Doppelkiste"; case "barrel" -> "Fass"; default -> "Einzelkiste"; };
 	}
 
+	/**
+	 * Ist der Chunk dieses Blocks wirklich im Client geladen? Achtung: ClientLevel.hasChunk() liefert in 26.3 IMMER true –
+	 * nur der Chunk-Speicher des Clients weiß es. In nicht geladenen Chunks liefert getBlockState() Luft, darum vor jeder Prüfung aufrufen.
+	 */
+	public static boolean geladen(ClientLevel level, BlockPos p) { return level.getChunkSource().hasChunk(p.getX() >> 4, p.getZ() >> 4); }
+
 	static boolean istKiste(Block b) { return b == Blocks.CHEST || b == Blocks.TRAPPED_CHEST; }
 	static boolean istLager(Block b) { return istKiste(b) || b == Blocks.BARREL; }
 

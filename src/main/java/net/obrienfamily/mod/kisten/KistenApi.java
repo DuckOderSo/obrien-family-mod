@@ -76,6 +76,20 @@ public final class KistenApi {
 		return r;
 	}
 
+	/** Alle Lagerorte dieses Servers (nur Positionen und Typ) für die lokale Abbau-Erkennung. */
+	public static JsonObject positionen(String welt) throws ShopApi.ApiException {
+		return api().get("/api/mod/chests?mode=positions&world=" + enc(welt));
+	}
+
+	/** Abbau einer registrierten Kiste melden: löscht den ganzen Lagerort samt aller Item-Zuordnungen und Zählungen. */
+	public static JsonObject abgebaut(String welt, String dim, long id, BlockPos p) throws ShopApi.ApiException {
+		JsonObject b = basis("gone", welt, dim, p);
+		b.addProperty("id", id);
+		JsonObject r = api().send("POST", "/api/mod/chests", b);
+		CACHE.clear();
+		return r;
+	}
+
 	public static JsonObject an(String welt, String dim, BlockPos p) throws ShopApi.ApiException {
 		return api().get("/api/mod/chests?mode=at&world=" + enc(welt) + "&dim=" + enc(dim) + "&x=" + p.getX() + "&y=" + p.getY() + "&z=" + p.getZ());
 	}
@@ -102,6 +116,7 @@ public final class KistenApi {
 		b.addProperty("item", item);
 		JsonObject r = api().send("POST", "/api/mod/chests", b);
 		CACHE.clear();
+		KistenWaechter.veraltet();
 		return r;
 	}
 
@@ -110,6 +125,7 @@ public final class KistenApi {
 		if (item == null) b.addProperty("confirm", true); else b.addProperty("item", item);
 		JsonObject r = api().send("POST", "/api/mod/chests", b);
 		CACHE.clear();
+		KistenWaechter.veraltet();
 		return r;
 	}
 

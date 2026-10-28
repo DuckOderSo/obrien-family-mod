@@ -36,6 +36,9 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 - **Keine Sicht durch Wände:** Die Kistenmarkierung besteht aus normalen Partikeln und wird von Blöcken verdeckt.
 - **Kein Scannen der Welt:** Es werden keine Chunks geladen und keine Gegend nach Kisten durchsucht. Gelesen wird nur
   der Blockzustand einer Kiste, die du gerade anschaust oder die bereits registriert ist und in deiner Nähe geladen ist.
+- **Abgebaute Kisten** erkennt die Mod nur in Chunks, die gerade bei dir geladen sind: Fehlt eine registrierte Kiste dort bei
+  zwei Prüfungen im Abstand von 2 Sekunden, löscht ein Client mit Admin-Schlüssel die Registrierung samt aller Item-Zuordnungen
+  und Bestände (bei Doppelkisten die ganze Kiste, wenn eine Hälfte fehlt). Nicht geladene Kisten werden nie gelöscht.
 - **Kisteninhalte** sieht die Mod nur, wenn ein Admin eine registrierte Kiste selbst öffnet (dann zählt sie die
   registrierten Items). Fremde Kisten und Inventare anderer Spieler werden nie ausgelesen.
 - Keine Telemetrie: Netzwerkverbindungen nur zur Website der Familie und zu GitHub (Updates).

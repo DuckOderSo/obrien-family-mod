@@ -41,8 +41,9 @@ public final class KistenBefehle {
 
 	/** Ereignisse des Moduls (Hervorhebung, Bestandszählung). */
 	public static void init() {
-		ClientTickEvents.END_CLIENT_TICK.register(c -> Hervorhebung.tick());
+		ClientTickEvents.END_CLIENT_TICK.register(c -> { Hervorhebung.tick(); KistenWaechter.tick(); });
 		Bestand.init();
+		KistenWaechter.init();
 	}
 
 	/** Hängt die Kistenbefehle an /obrien an. */
@@ -166,16 +167,15 @@ public final class KistenBefehle {
 
 	/** Echte Prüfung nur in geladenen Chunks der aktuellen Dimension (es wird nichts nachgeladen). */
 	private static Live live(JsonObject loc, String dim) {
-		Minecraft mc = Minecraft.getInstance();
-		BlockPos p = pos(loc.get("pos"));
-		if (mc.level == null || p == null || !dim.equals(str(loc, "dimension")) || !mc.level.hasChunk(p.getX() >> 4, p.getZ() >> 4)) return new Live(false, false);
-		KistenOrt.Erkennung e = KistenOrt.erkenne(mc.level, p);
-		return new Live(true, e.ziel() != null);
+		KistenWaechter.Zustand z = KistenWaechter.zustand(loc);
+		if (z == KistenWaechter.Zustand.FEHLT) KistenWaechter.gesehen(loc); // Admin-Client bereinigt nach zweiter Bestätigung
+		return new Live(z != KistenWaechter.Zustand.UNGEPRUEFT, z == KistenWaechter.Zustand.VORHANDEN);
 	}
 
 	private static MutableComponent liveText(Live l) {
 		if (!l.geladen()) return Theme.t("nicht geladen – Zustand ungeprüft", Theme.DIM);
-		return l.vorhanden() ? Theme.t("✔ Kiste vorhanden (gerade geprüft)", Theme.OK) : Theme.t("⚠ keine Kiste mehr an dieser Stelle (gerade geprüft)", Theme.ERR);
+		if (l.vorhanden()) return Theme.t("✔ Kiste vorhanden (gerade geprüft)", Theme.OK);
+		return Theme.t("✖ Truhe nicht gefunden – Registrierung ungültig" + (ObrienMod.isAdminKey() ? " (wird automatisch entfernt)" : " (ein Admin muss sie entfernen)"), Theme.ERR);
 	}
 
 	/** Item aus Eingabe oder Haupthand; bei Mehrdeutigkeit klickbare Vorschläge. Muss im Spiel-Thread laufen. */
@@ -247,11 +247,7 @@ public final class KistenBefehle {
 			JsonObject item = loc.getAsJsonArray("items").get(0).getAsJsonObject();
 			MutableComponent l2 = Component.empty().append(Theme.t("     ", Theme.DIM)).append(lv.geladen() ? liveText(lv) : status(loc)).append(Theme.t(" · ", Theme.DIM)).append(bestand(item));
 			// Zerstörte Kiste (gerade gesehen): Admins können die veraltete Registrierung direkt entfernen.
-			if (lv.geladen() && !lv.vorhanden()) {
-				fehlt++;
-				if (meldenErlaubt) l2.append(Theme.t("  ", Theme.DIM)).append(Notifier.command("[Registrierung entfernen]", "/obrien removekiste " + it.id() + " @" + p.getX() + "," + p.getY() + "," + p.getZ(),
-					"Entfernt nur diese veraltete Zuordnung"));
-			}
+			if (lv.geladen() && !lv.vorhanden()) fehlt++;
 			lines.add(l2);
 			// Hervorhebung nur für tatsächlich gesehene Kisten in der Nähe.
 			if (lv.vorhanden() && (!loc.has("distance") || loc.get("distance").isJsonNull() || loc.get("distance").getAsDouble() <= 64)) {
@@ -259,8 +255,9 @@ public final class KistenBefehle {
 				if (e.ziel() != null) { Hervorhebung.markiere(e.ziel(), o.dim()); markiert++; }
 			}
 			// Echte Beobachtung speichern (nur Admin-Schlüssel), damit veraltete Registrierungen erkennbar werden.
-			if (lv.geladen() && meldenErlaubt && (lv.vorhanden() != "ok".equals(str(loc, "status")) || vor(str(loc, "checked_at")).matches("vor \\d+ (Std\\.|Tag|Tagen)")))
-				melde(o, p, lv.vorhanden());
+			// Vorhandene Kiste als „gesehen“ speichern (fehlende bereinigt der KistenWaechter).
+			if (lv.vorhanden() && meldenErlaubt && (!"ok".equals(str(loc, "status")) || vor(str(loc, "checked_at")).matches("vor \\d+ (Std\\.|Tag|Tagen)")))
+				melde(o, p, true);
 		}
 		if (total > 10) lines.add(Component.empty().append(Theme.t(" + " + (total - 10) + " weitere  ", Theme.DIM))
 			.append(Notifier.command("[Liste]", "/obrien listkisten " + it.id(), "Alle Lagerorte für dieses Item seitenweise")));
@@ -330,7 +327,7 @@ public final class KistenBefehle {
 		} else if (soll != null) {
 			// Veraltete Registrierung einer zerstörten Kiste: nur erlaubt, wenn die Mod an dieser Stelle gerade sicher keine Kiste sieht.
 			Minecraft lv = Minecraft.getInstance();
-			if (!lv.level.hasChunk(soll.getX() >> 4, soll.getZ() >> 4)) { Notifier.error("Diese Stelle ist nicht geladen – geh näher heran, damit die Mod prüfen kann, ob dort noch eine Kiste steht."); return 0; }
+			if (!KistenOrt.geladen(lv.level, soll)) { Notifier.error("Diese Stelle ist nicht geladen – geh näher heran, damit die Mod prüfen kann, ob dort noch eine Kiste steht."); return 0; }
 			if (KistenOrt.erkenne(lv.level, soll).ziel() != null) { Notifier.error("Dort steht noch eine Kiste. Schau sie an, um die Zuordnung zu entfernen."); return 0; }
 			z = new KistenOrt.Ziel("single", soll, null);
 		} else { Notifier.error(e.fehler()); return 0; }
@@ -431,8 +428,10 @@ public final class KistenBefehle {
 			JsonObject it = loc.getAsJsonArray("items").get(0).getAsJsonObject();
 			String id = str(it, "item");
 			lines.add(zeile().append(Theme.b(ItemSuche.name(id), Theme.GOLD)).append(Theme.t("  " + id, Theme.DIM)));
+			// Geladene Kisten jetzt prüfen: Eine abgebaute Kiste erscheint nie kommentarlos als gültig.
+			Live lv = live(loc, KistenOrt.dimension());
 			lines.add(Component.empty().append(Theme.t("     ", Theme.DIM)).append(koordinaten(loc))
-				.append(Theme.t("  " + KistenOrt.dimName(str(loc, "dimension")) + " · " + KistenOrt.typName(str(loc, "kind")) + " · ", Theme.MUTED)).append(status(loc)));
+				.append(Theme.t("  " + KistenOrt.dimName(str(loc, "dimension")) + " · " + KistenOrt.typName(str(loc, "kind")) + " · ", Theme.MUTED)).append(lv.geladen() ? liveText(lv) : status(loc)));
 		}
 		MutableComponent nav = Component.empty().append(Theme.t(" ", Theme.DIM));
 		if (page > 1) nav.append(Notifier.command("[◀ Zurück]", "/obrien listkisten " + filter + (page - 1), "Vorherige Seite")).append(Theme.t("  ", Theme.DIM));
@@ -596,6 +595,8 @@ public final class KistenBefehle {
 			}).append(Theme.t("  ", Theme.DIM)).append(koordinaten(e))
 				.append(Theme.t("  " + KistenOrt.dimName(str(e, "dimension")) + " · " + KistenOrt.typName(str(e, "kind")) + " · ", Theme.MUTED));
 			String at = str(e, "counted_at");
+			Live lv = live(e, KistenOrt.dimension());
+			if (lv.geladen() && !lv.vorhanden()) { lines.add(l.append(Theme.t("✖ Truhe nicht gefunden – Registrierung ungültig", Theme.ERR))); continue; }
 			l.append(switch (st) {
 				case "fresh" -> Theme.t("gezählt " + vor(at), Theme.MUTED);
 				case "stale" -> Theme.t("Stand " + vor(at), Theme.WARN);

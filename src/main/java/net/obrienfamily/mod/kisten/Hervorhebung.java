@@ -39,7 +39,7 @@ public final class Hervorhebung {
 			for (Box x : AKTIV) {
 				if (!x.dim().equals(dim)) continue;
 				// Nur geladene Chunks (es wird nichts nachgeladen) und nur, solange dort noch eine Kiste steht.
-				if (!mc.level.hasChunk(x.a().getX() >> 4, x.a().getZ() >> 4) || !KistenOrt.istLager(mc.level.getBlockState(x.a()).getBlock())) continue;
+				if (!KistenOrt.geladen(mc.level, x.a()) || !KistenOrt.istLager(mc.level.getBlockState(x.a()).getBlock())) continue;
 				zeichne(mc, x);
 			}
 		}

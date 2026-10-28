@@ -143,6 +143,8 @@ public final class ObrienMod implements ClientModInitializer {
 		try {
 			if (cursor == null) {
 				JsonObject r = api.get("/api/mod/feed");
+				// Der Feed antwortet nur Admin-Schlüsseln – damit ist die Berechtigung auch dann bekannt, wenn /api/mod/me beim Start nicht erreichbar war.
+				if (scope == null) scope = "admin";
 				cursor = r.get("cursor").getAsString();
 				if (!welcomed) { welcomed = true; welcome(r); }
 				return;
