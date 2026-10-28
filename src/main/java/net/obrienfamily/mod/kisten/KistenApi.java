@@ -50,6 +50,32 @@ public final class KistenApi {
 		return api().get("/api/mod/chests?mode=list&world=" + enc(welt) + "&page=" + seite + (dim != null ? "&dim=" + enc(dim) : "") + (item != null ? "&item=" + enc(item) : ""));
 	}
 
+	/**
+	 * Lagerbestand: mit Item → Summe und Lagerorte (seitenweise), ohne Item → Übersicht aller Items.
+	 * Die Website summiert per SQL; hier nur 20 s Zwischenspeicher, der bei jeder eigenen Änderung/Zählung geleert wird.
+	 */
+	public static JsonObject bestand(String welt, String item, String sort, String filter, int seite) throws ShopApi.ApiException {
+		String key = "stock|" + welt + "|" + item + "|" + sort + "|" + filter + "|" + seite;
+		Eintrag c = CACHE.get(key);
+		if (c != null && System.currentTimeMillis() - c.zeit() < TTL) return c.daten();
+		JsonObject r = api().get("/api/mod/chests?mode=stock&world=" + enc(welt) + "&page=" + seite + (item != null ? "&item=" + enc(item) : "")
+			+ (sort != null ? "&sort=" + sort : "") + (filter != null ? "&filter=" + filter : ""));
+		CACHE.put(key, new Eintrag(r, System.currentTimeMillis()));
+		return r;
+	}
+
+	/** Mindestbestand setzen (null = entfernen). Nur Admin-Schlüssel – geprüft wird auf der Website. */
+	public static JsonObject mindest(String welt, String item, Integer min) throws ShopApi.ApiException {
+		JsonObject b = new JsonObject();
+		b.addProperty("action", "min");
+		b.addProperty("world", welt);
+		b.addProperty("item", item);
+		if (min == null) b.add("min", com.google.gson.JsonNull.INSTANCE); else b.addProperty("min", min);
+		JsonObject r = api().send("POST", "/api/mod/chests", b);
+		CACHE.clear();
+		return r;
+	}
+
 	public static JsonObject an(String welt, String dim, BlockPos p) throws ShopApi.ApiException {
 		return api().get("/api/mod/chests?mode=at&world=" + enc(welt) + "&dim=" + enc(dim) + "&x=" + p.getX() + "&y=" + p.getY() + "&z=" + p.getZ());
 	}

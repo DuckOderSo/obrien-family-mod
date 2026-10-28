@@ -19,6 +19,12 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
   `/obrien findkiste [item] [all]`, `/obrien setkiste`, `/obrien removekiste [item]`, `/obrien listkisten`, `/obrien infokiste`.
   Admins registrieren eigene Lagerkisten („diese Kiste = Diamanten“); gesucht wird in diesen Registrierungen –
   auch ohne das Item im Inventar. Gefundene Kisten in der Nähe werden 10 Sekunden mit Partikeln markiert.
+- **Lagerbestand:** `/obrien bestand [item]` (Alias `/obrien lager`) zeigt den Gesamtbestand eines Items über alle
+  registrierten Lagerkisten – mit den einzelnen Lagerorten und Koordinaten. Ohne Item gibt es eine Übersicht aller Items
+  (`name` = alphabetisch, `niedrig` = unter Mindestbestand, `ungeprüft` = unsichere Bestände, Zahl = Seite).
+  Summiert werden nur echte Zählungen: Bestätigt = in den letzten 24 Stunden gezählt, ältere Zählungen werden als
+  „letzter bekannter Stand“ markiert, nie gezählte Kisten als „unbekannt“ (nie als 0). Admins können mit
+  `/obrien bestand <item> min <zahl|aus>` einen Mindestbestand festlegen.
 - **Updates mit Nachfrage:** Die Mod prüft die [Releases](../../releases) dieses Repositorys. Erst nach Klick auf
   „Jetzt herunterladen“ (oder `/obrien update`) wird die neue Version geladen, ihre **Ed25519-Signatur** geprüft
   ([`signing-public-key.pem`](signing-public-key.pem)) und beim Beenden von Minecraft installiert.

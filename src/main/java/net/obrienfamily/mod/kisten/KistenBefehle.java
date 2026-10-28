@@ -30,7 +30,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
- * Kistenfinder: /obrien findkiste · setkiste · removekiste · listkisten · infokiste.
+ * Kistenfinder: /obrien findkiste · setkiste · removekiste · listkisten · infokiste · bestand (Alias: lager).
  * Grundsatz: Die Datenbank kennt registrierte Lagerorte. Ob eine Kiste noch steht, prüft die Mod nur dort, wo der Chunk gerade
  * geladen ist; Bestände nur, wenn ein Admin die Kiste selbst geöffnet hat. Alles andere wird als „ungeprüft“ angezeigt.
  */
@@ -58,7 +58,19 @@ public final class KistenBefehle {
 			.then(literal("listkisten").executes(c -> list(""))
 				.then(argument("filter", StringArgumentType.greedyString()).suggests((c, b) -> ItemSuche.vorschlagen(b, false))
 					.executes(c -> list(StringArgumentType.getString(c, "filter")))))
-			.then(literal("infokiste").executes(c -> info()));
+			.then(literal("infokiste").executes(c -> info()))
+			.then(bestandBefehl("bestand"))
+			.then(bestandBefehl("lager"));
+	}
+
+	private static LiteralArgumentBuilder<FabricClientCommandSource> bestandBefehl(String name) {
+		return literal(name).executes(c -> bestand(""))
+			.then(argument("item", StringArgumentType.greedyString()).suggests((c, b) -> {
+				// Erstes Wort: Optionen der Übersicht zusätzlich zu den Items
+				String rest = b.getRemaining().toLowerCase(Locale.ROOT);
+				if (!rest.contains(" ")) for (String w : List.of("name", "niedrig", "ungeprüft")) if (w.startsWith(rest)) b.suggest(w);
+				return ItemSuche.vorschlagen(b, false);
+			}).executes(c -> bestand(StringArgumentType.getString(c, "item"))));
 	}
 
 	// ---------- Gemeinsames ----------
@@ -123,6 +135,15 @@ public final class KistenBefehle {
 			.withClickEvent(new ClickEvent.CopyToClipboard(coords(p)))
 			.withHoverEvent(new HoverEvent.ShowText(Theme.t("Klicken: Koordinaten kopieren", Theme.MUTED))));
 	}
+
+	/** Koordinaten eines Lagerorts – bei Doppelkisten beide Hälften, jeweils einzeln kopierbar. */
+	private static MutableComponent koordinaten(JsonObject loc) {
+		MutableComponent m = Component.empty().append(koordinaten(pos(loc.get("pos"))));
+		BlockPos b = pos(loc.get("pos2"));
+		return b == null ? m : m.append(Theme.t(" + ", Theme.DIM)).append(koordinaten(b));
+	}
+
+	private static String coords(KistenOrt.Ziel z) { return coords(z.a()) + (z.b() == null ? "" : " + " + coords(z.b())); }
 
 	private static MutableComponent zeile() { return Component.empty().append(Theme.t(" ▸ ", Theme.DARK)); }
 
@@ -218,7 +239,7 @@ public final class KistenBefehle {
 			if (shown++ >= 10) break;
 			BlockPos p = pos(loc.get("pos"));
 			String dim = str(loc, "dimension");
-			MutableComponent l1 = zeile().append(koordinaten(p)).append(Theme.t("  " + KistenOrt.dimName(dim), dim.equals(o.dim()) ? Theme.MUTED : Theme.INFO));
+			MutableComponent l1 = zeile().append(koordinaten(loc)).append(Theme.t("  " + KistenOrt.dimName(dim), dim.equals(o.dim()) ? Theme.MUTED : Theme.INFO));
 			if (loc.has("distance") && !loc.get("distance").isJsonNull()) l1.append(Theme.t(" · " + Math.round(loc.get("distance").getAsDouble()) + " Blöcke", Theme.GOLD));
 			l1.append(Theme.t(" · " + KistenOrt.typName(str(loc, "kind")), Theme.MUTED));
 			lines.add(l1);
@@ -274,7 +295,8 @@ public final class KistenBefehle {
 				main(() -> Hervorhebung.markiere(z, o.dim()));
 				List<String> andere = new ArrayList<>();
 				for (JsonElement x : loc.getAsJsonArray("items")) { String id = str(x.getAsJsonObject(), "item"); if (!id.equals(it.id())) andere.add(ItemSuche.name(id)); }
-				String wo = " (" + z.typ() + " · " + coords(pos(loc.get("pos"))) + ")";
+				// Gespeichert wird der anvisierte Block (bei Doppelkisten beide Hälften) – nie die Spielerposition.
+				String wo = " (" + z.typ() + " · " + coords(z) + ")";
 				if (r.get("created").getAsBoolean()) Notifier.ok("Kiste erfolgreich als Lager für " + it.name() + " registriert" + wo + ".");
 				else Notifier.warn("Diese Kiste ist bereits für " + it.name() + " registriert" + wo + ".");
 				if (r.has("merged") && r.get("merged").getAsBoolean()) Notifier.info("Frühere Einzelkisten-Registrierungen wurden zu dieser Doppelkiste zusammengeführt.");
@@ -409,7 +431,7 @@ public final class KistenBefehle {
 			JsonObject it = loc.getAsJsonArray("items").get(0).getAsJsonObject();
 			String id = str(it, "item");
 			lines.add(zeile().append(Theme.b(ItemSuche.name(id), Theme.GOLD)).append(Theme.t("  " + id, Theme.DIM)));
-			lines.add(Component.empty().append(Theme.t("     ", Theme.DIM)).append(koordinaten(pos(loc.get("pos"))))
+			lines.add(Component.empty().append(Theme.t("     ", Theme.DIM)).append(koordinaten(loc))
 				.append(Theme.t("  " + KistenOrt.dimName(str(loc, "dimension")) + " · " + KistenOrt.typName(str(loc, "kind")) + " · ", Theme.MUTED)).append(status(loc)));
 		}
 		MutableComponent nav = Component.empty().append(Theme.t(" ", Theme.DIM));
@@ -440,14 +462,13 @@ public final class KistenBefehle {
 
 	private static void zeigeInfo(Ort o, KistenOrt.Ziel z, JsonObject loc) {
 		if (loc == null) {
-			MutableComponent m = Component.empty().append(Theme.t("Diese " + z.typ() + " (" + coords(z.a()) + ") ist nicht registriert.", Theme.WARN));
+			MutableComponent m = Component.empty().append(Theme.t("Diese " + z.typ() + " (" + coords(z) + ") ist nicht registriert.", Theme.WARN));
 			if (ObrienMod.isAdminKey()) m.append(Theme.t("  ", Theme.DIM)).append(Notifier.command("[Für Item in der Hand registrieren]", "/obrien setkiste", "Registriert diese Kiste für das Item in deiner Haupthand"));
 			Notifier.chat(m);
 			return;
 		}
 		List<Component> lines = new ArrayList<>();
-		lines.add(zeile().append(Theme.t("Position  ", Theme.DIM)).append(koordinaten(pos(loc.get("pos"))))
-			.append(loc.get("pos2").isJsonNull() ? Component.empty() : Theme.t(" + " + coords(pos(loc.get("pos2"))), Theme.MUTED)));
+		lines.add(zeile().append(Theme.t("Position  ", Theme.DIM)).append(koordinaten(loc)));
 		lines.add(zeile().append(Theme.t("Typ        ", Theme.DIM)).append(Theme.t(KistenOrt.typName(str(loc, "kind")) + " · " + KistenOrt.dimName(str(loc, "dimension")), Theme.TEXT)));
 		if (!str(loc, "kind").equals(z.kind())) lines.add(Theme.t("     ⚠ Registriert als " + KistenOrt.typName(str(loc, "kind")) + ", jetzt " + z.typ() + ". Mit /obrien setkiste aktualisieren.", Theme.WARN));
 		lines.add(zeile().append(Theme.t("Status     ", Theme.DIM)).append(Theme.t("✔ Kiste vorhanden (gerade geprüft)", Theme.OK)));
@@ -460,5 +481,174 @@ public final class KistenBefehle {
 		lines.add(Theme.t(" Bestände werden nur beim Öffnen der Kiste durch einen Admin gezählt.", Theme.DIM));
 		Notifier.block("Kisteninfo", lines.toArray(new Component[0]));
 		if (ObrienMod.isAdminKey() && !"ok".equals(str(loc, "status"))) melde(o, z.a(), true);
+	}
+
+	// ---------- /obrien bestand (Alias: lager) ----------
+
+	private static String zahl(long n) { return String.format(Locale.GERMANY, "%,d", n); }
+	private static int i(JsonObject o, String k) { return o.has(k) && !o.get(k).isJsonNull() ? o.get(k).getAsInt() : 0; }
+	private static String kisten(int n) { return n == 1 ? "1 Kiste" : n + " Kisten"; }
+
+	/**
+	 * /obrien bestand [item] [seite] · [name] [niedrig|ungeprüft] [seite] · <item> min <zahl|aus>.
+	 * Liest nur die gespeicherten Zählungen der Website – unabhängig vom eigenen Inventar und ohne Chunks zu laden.
+	 */
+	private static int bestand(String arg) {
+		Ort o = ort(); if (o == null) return 0;
+		int seite = 1;
+		String sort = null, filter = null, min = null;
+		boolean hand = false;
+		List<String> rest = new ArrayList<>();
+		String[] t = arg.trim().split("\\s+");
+		for (int k = 0; k < t.length; k++) {
+			String l = t[k].toLowerCase(Locale.ROOT);
+			if (l.isEmpty()) continue;
+			if (l.equals("min") || l.equals("mindest")) { if (k + 1 >= t.length) { Notifier.error("Nutze: /obrien bestand <item> min <Zahl|aus>"); return 0; } min = t[++k].toLowerCase(Locale.ROOT); }
+			else if (l.matches("\\d{1,5}")) seite = Math.max(1, Integer.parseInt(l));
+			else if (l.equals("name")) sort = "name";
+			else if (l.equals("menge")) sort = "total";
+			else if (l.equals("niedrig")) filter = "low";
+			else if (l.equals("ungeprüft") || l.equals("ungeprueft") || l.equals("unsicher")) filter = "unsure";
+			else if (l.equals("hand")) hand = true;
+			else rest.add(t[k]);
+		}
+		ItemSuche.Eintrag it = null;
+		if (!rest.isEmpty() || hand) { it = item(hand ? "" : String.join(" ", rest), "/obrien bestand", min != null ? " min " + min : ""); if (it == null) return 0; }
+		if (min != null) {
+			if (it == null) { Notifier.error("Gib das Item an, z. B. /obrien bestand diamond min 128"); return 0; }
+			Integer n = null;
+			if (!min.equals("aus") && !min.equals("off")) {
+				try { n = Integer.parseInt(min.replace(".", "")); } catch (NumberFormatException e) { n = -1; }
+				if (n < 1 || n > 10_000_000) { Notifier.error("Der Mindestbestand muss eine Zahl von 1 bis 10.000.000 sein (oder „aus“)."); return 0; }
+			}
+			return mindest(o, it, n);
+		}
+		ItemSuche.Eintrag fIt = it;
+		String fSort = sort, fFilter = filter;
+		int fSeite = seite;
+		async(() -> {
+			try {
+				JsonObject r = KistenApi.bestand(o.welt(), fIt == null ? null : fIt.id(), fSort, fFilter, fSeite);
+				main(() -> { if (fIt != null) zeigeBestand(fIt, r); else zeigeUebersicht(r); });
+			} catch (ShopApi.ApiException e) {
+				Notifier.error(fehler(e, "Der Lagerbestand konnte nicht geladen werden."));
+			}
+		});
+		return 1;
+	}
+
+	private static int mindest(Ort o, ItemSuche.Eintrag it, Integer n) {
+		async(() -> {
+			if (!admin()) { Notifier.error("Den Mindestbestand dürfen nur Admins festlegen (Admin-Schlüssel)."); return; }
+			try {
+				KistenApi.mindest(o.welt(), it.id(), n);
+				Notifier.ok(n == null ? "Mindestbestand für " + it.name() + " entfernt." : "Mindestbestand für " + it.name() + " auf " + zahl(n) + " gesetzt.");
+			} catch (ShopApi.ApiException e) {
+				Notifier.error(fehler(e, "Der Mindestbestand konnte nicht gespeichert werden."));
+			}
+		});
+		return 1;
+	}
+
+	private static void zeigeBestand(ItemSuche.Eintrag it, JsonObject r) {
+		JsonObject s = r.has("summary") && !r.get("summary").isJsonNull() ? r.getAsJsonObject("summary") : null;
+		if (s == null) {
+			Notifier.chat(Component.empty().append(Theme.t("Für " + it.name() + " ist kein Lagerort registriert – kein Bestand bekannt.  ", Theme.WARN))
+				.append(Notifier.command("[Übersicht]", "/obrien bestand", "Alle Items mit registrierten Lagerorten")));
+			return;
+		}
+		int h = i(r, "stale_hours");
+		int fresh = i(s, "fresh"), stale = i(s, "stale"), unknown = i(s, "unknown"), missing = i(s, "missing"), empty = i(s, "empty");
+		long fs = s.get("fresh_sum").getAsLong(), ss = s.get("stale_sum").getAsLong();
+		List<Component> lines = new ArrayList<>();
+		if (fresh + stale == 0) {
+			// Nie gezählt: ausdrücklich unbekannt, nicht 0.
+			lines.add(Theme.b(" Bestand unbekannt", Theme.WARN));
+			lines.add(Theme.t(unknown + missing == 1 ? " Die registrierte Kiste wurde bisher von keinem Admin geöffnet und gezählt."
+				: " Keine der " + (unknown + missing) + " Kisten wurde bisher von einem Admin geöffnet und gezählt.", Theme.MUTED));
+		} else {
+			lines.add(Component.empty().append(Theme.t(" Bekannter Gesamtbestand: ", Theme.TEXT)).append(Theme.b(zahl(fs + ss), Theme.GOLD))
+				.append(Theme.t(" in " + kisten(fresh + stale), Theme.MUTED)));
+			if (fresh > 0) lines.add(Theme.t(" ✔ " + zahl(fs) + " bestätigt aus " + kisten(fresh) + " (gezählt in den letzten " + h + " Std.)", Theme.OK));
+			if (stale > 0) lines.add(Theme.t(" ◷ " + zahl(ss) + " aus " + kisten(stale) + " mit älterer Zählung (letzter bekannter Stand)", Theme.WARN));
+		}
+		if (unknown > 0 && fresh + stale > 0) lines.add(Theme.t(" ? Zusätzlich " + (unknown == 1 ? "1 Lagerkiste" : unknown + " Lagerkisten") + " mit unbekanntem Bestand – tatsächlicher Bestand kann höher sein.", Theme.WARN));
+		if (missing > 0) lines.add(Theme.t(" ⚠ " + (missing == 1 ? "1 Lagerort" : missing + " Lagerorte") + " zuletzt nicht gefunden – nicht mitgezählt.", Theme.ERR));
+		String last = str(s, "last_counted_at");
+		if (empty > 0 || !last.isEmpty()) lines.add(Theme.t(" " + (empty > 0 ? (empty == 1 ? "1 Kiste leer" : empty + " Kisten leer") + (last.isEmpty() ? "" : " · ") : "")
+			+ (last.isEmpty() ? "" : "Letzte Zählung " + vor(last)), Theme.DIM));
+		if (s.has("min") && !s.get("min").isJsonNull()) {
+			int m = s.get("min").getAsInt();
+			lines.add(s.get("low").getAsBoolean() ? Theme.t(" ⚠ Mindestbestand " + zahl(m) + " unterschritten" + (unknown > 0 ? " (soweit bekannt)" : ""), Theme.ERR)
+				: Theme.t(" Mindestbestand " + zahl(m) + " erreicht", Theme.MUTED));
+		}
+		int page = i(r, "page"), pages = i(r, "pages");
+		lines.add(Theme.t(" Lagerorte" + (pages > 1 ? " · Seite " + page + " von " + pages : "") + ":", Theme.MUTED));
+		for (JsonElement el : r.getAsJsonArray("entries")) {
+			JsonObject e = el.getAsJsonObject();
+			String st = str(e, "state");
+			String n = e.get("count").isJsonNull() ? "?" : zahl(e.get("count").getAsLong());
+			MutableComponent l = zeile().append(switch (st) {
+				case "fresh" -> Theme.b(n, Theme.OK);
+				case "stale" -> Theme.b(n, Theme.WARN);
+				case "missing" -> Theme.t("–", Theme.ERR);
+				default -> Theme.b("?", Theme.DIM);
+			}).append(Theme.t("  ", Theme.DIM)).append(koordinaten(e))
+				.append(Theme.t("  " + KistenOrt.dimName(str(e, "dimension")) + " · " + KistenOrt.typName(str(e, "kind")) + " · ", Theme.MUTED));
+			String at = str(e, "counted_at");
+			l.append(switch (st) {
+				case "fresh" -> Theme.t("gezählt " + vor(at), Theme.MUTED);
+				case "stale" -> Theme.t("Stand " + vor(at), Theme.WARN);
+				case "missing" -> Theme.t("zuletzt nicht gefunden" + (e.get("count").isJsonNull() ? "" : " (vorher " + n + ")"), Theme.ERR);
+				default -> Theme.t("ungeprüft", Theme.DIM);
+			});
+			lines.add(l);
+		}
+		MutableComponent nav = Component.empty().append(Theme.t(" ", Theme.DIM));
+		if (page > 1) nav.append(Notifier.command("[◀ Zurück]", "/obrien bestand " + it.id() + " " + (page - 1), "Vorherige Seite")).append(Theme.t("  ", Theme.DIM));
+		if (page < pages) nav.append(Notifier.command("[Weiter ▶]", "/obrien bestand " + it.id() + " " + (page + 1), "Nächste Seite")).append(Theme.t("  ", Theme.DIM));
+		nav.append(Notifier.command("[Übersicht]", "/obrien bestand", "Alle Items"));
+		lines.add(nav);
+		lines.add(Theme.t(" Gezählt wird beim Schließen einer registrierten Kiste durch einen Admin.", Theme.DIM));
+		Notifier.block("Lagerbestand · " + it.name(), lines.toArray(new Component[0]));
+	}
+
+	private static void zeigeUebersicht(JsonObject r) {
+		String sort = str(r, "sort"), filter = str(r, "filter");
+		int total = i(r, "total_items"), low = i(r, "low_items"), unsure = i(r, "unsure_items"), page = i(r, "page"), pages = i(r, "pages");
+		String opt = ("name".equals(sort) ? "name " : "") + ("low".equals(filter) ? "niedrig " : "unsure".equals(filter) ? "ungeprüft " : "");
+		if (total == 0) {
+			Notifier.warn(filter.isEmpty() ? "Auf diesem Server sind noch keine Kisten registriert." : "low".equals(filter) ? "Kein Item liegt unter seinem Mindestbestand." : "Alle Bestände sind aktuell gezählt.");
+			return;
+		}
+		List<Component> lines = new ArrayList<>();
+		lines.add(Theme.t(" " + total + (total == 1 ? " Item" : " Items") + " · sortiert nach " + ("name".equals(sort) ? "Name" : "Menge")
+			+ ("low".equals(filter) ? " · nur unter Mindestbestand" : "unsure".equals(filter) ? " · nur unsichere Bestände" : "") + (pages > 1 ? " · Seite " + page + "/" + pages : ""), Theme.MUTED));
+		for (JsonElement el : r.getAsJsonArray("items")) {
+			JsonObject x = el.getAsJsonObject();
+			String id = str(x, "item");
+			int fresh = i(x, "fresh"), stale = i(x, "stale"), unknown = i(x, "unknown"), missing = i(x, "missing");
+			long sum = x.get("fresh_sum").getAsLong() + x.get("stale_sum").getAsLong();
+			MutableComponent l = zeile().append(Notifier.command(ItemSuche.name(id), "/obrien bestand " + id, "Bestand und Lagerorte anzeigen")).append(Theme.t("  ", Theme.DIM));
+			l.append(fresh + stale == 0 ? Theme.t("unbekannt", Theme.DIM) : Theme.b(zahl(sum) + (unknown > 0 ? "+" : ""), stale > 0 ? Theme.WARN : Theme.CREAM));
+			l.append(Theme.t("  " + kisten(i(x, "locations")), Theme.DIM));
+			if (stale > 0) l.append(Theme.t(" · ◷ " + stale + " älter", Theme.WARN));
+			if (unknown > 0) l.append(Theme.t(" · ? " + unknown + " ungeprüft", Theme.DIM));
+			if (missing > 0) l.append(Theme.t(" · ⚠ " + missing + " fehlt", Theme.ERR));
+			if (x.get("low").getAsBoolean()) l.append(Theme.t(" · ⚠ unter Mindestbestand " + zahl(x.get("min").getAsLong()), Theme.ERR));
+			lines.add(l);
+		}
+		MutableComponent nav = Component.empty().append(Theme.t(" ", Theme.DIM));
+		if (page > 1) nav.append(Notifier.command("[◀]", "/obrien bestand " + opt + (page - 1), "Vorherige Seite")).append(Theme.t(" ", Theme.DIM));
+		if (page < pages) nav.append(Notifier.command("[▶]", "/obrien bestand " + opt + (page + 1), "Nächste Seite")).append(Theme.t(" ", Theme.DIM));
+		String f = "low".equals(filter) ? "niedrig " : "unsure".equals(filter) ? "ungeprüft " : "";
+		nav.append("name".equals(sort) ? Notifier.command("[Nach Menge]", "/obrien bestand " + f, "Größte Bestände zuerst") : Notifier.command("[Nach Name]", "/obrien bestand name " + f, "Alphabetisch nach Item-ID"));
+		if (filter.isEmpty()) {
+			if (low > 0) nav.append(Theme.t(" ", Theme.DIM)).append(Notifier.command("[⚠ " + low + " niedrig]", "/obrien bestand niedrig", "Nur Items unter Mindestbestand"));
+			if (unsure > 0) nav.append(Theme.t(" ", Theme.DIM)).append(Notifier.command("[? " + unsure + " unsicher]", "/obrien bestand ungeprüft", "Items mit älteren, ungeprüften oder fehlenden Lagerorten"));
+		} else nav.append(Theme.t(" ", Theme.DIM)).append(Notifier.command("[Alle]", "/obrien bestand " + ("name".equals(sort) ? "name" : ""), "Filter aufheben"));
+		lines.add(nav);
+		lines.add(Theme.t(" Gelb = ältere Zählung · „+“ = weitere Kisten ungeprüft, Bestand kann höher sein.", Theme.DIM));
+		Notifier.block("Lagerbestand · Übersicht", lines.toArray(new Component[0]));
 	}
 }
