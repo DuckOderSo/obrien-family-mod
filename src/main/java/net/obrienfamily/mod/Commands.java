@@ -19,7 +19,7 @@ public final class Commands {
 	private Commands() {}
 
 	public static void register() {
-		ClientCommandRegistrationCallback.EVENT.register((dispatcher, ctx) -> dispatcher.register(literal("obrien")
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, ctx) -> dispatcher.register(net.obrienfamily.mod.kisten.KistenBefehle.attach(literal("obrien"))
 			.executes(c -> help())
 			.then(literal("hilfe").executes(c -> help()))
 			.then(literal("key").then(argument("schluessel", StringArgumentType.greedyString()).executes(c -> setKey(StringArgumentType.getString(c, "schluessel")))))
@@ -48,6 +48,13 @@ public final class Commands {
 
 	private static int help() {
 		Notifier.block("Befehle · v" + ObrienMod.version(),
+			Theme.t(" Kistenfinder", Theme.CREAM),
+			row("/obrien findkiste [item] [all]", "Lagerorte suchen, z. B. diamond oder Eisenbarren"),
+			row("/obrien setkiste", "anvisierte Kiste für Item in der Hand registrieren (Admin)"),
+			row("/obrien removekiste [item]", "Zuordnung der anvisierten Kiste entfernen (Admin)"),
+			row("/obrien listkisten [item|nether|seite]", "alle Registrierungen, seitenweise"),
+			row("/obrien infokiste", "Infos zur anvisierten Kiste"),
+			Theme.t(" Shop & Team", Theme.CREAM),
 			row("/obrien bestellungen", "Bestellübersicht (Taste B)"),
 			row("/obrien board", "Family Task Board (Taste J)"),
 			row("/obrien aufgaben", "deine offenen Aufgaben im Chat"),
@@ -97,8 +104,10 @@ public final class Commands {
 			lines.add(kv("Konto  ", Theme.t("nicht verbunden – /obrien key <Schlüssel>", Theme.WARN)));
 		} else {
 			try {
-				JsonObject r = ObrienMod.api.get("/api/mod/feed");
-				lines.add(kv("Konto  ", Theme.t("✔ verbunden als " + r.get("name").getAsString(), Theme.OK)));
+				JsonObject r = ObrienMod.api.get("/api/mod/me");
+				boolean admin = "admin".equals(r.get("scope").getAsString());
+				lines.add(kv("Konto  ", Theme.t("✔ verbunden als " + r.get("name").getAsString() + (admin ? " (Admin)" : " (Spieler – nur Kistensuche)"), Theme.OK)));
+				ObrienMod.refreshScope();
 			} catch (ShopApi.ApiException e) {
 				lines.add(kv("Konto  ", Theme.t("✖ " + e.getMessage(), Theme.ERR)));
 			}

@@ -43,6 +43,8 @@ public final class ObrienMod implements ClientModInitializer {
 	private static volatile String cursor;
 	private static volatile boolean welcomed;
 	private static volatile boolean authFailed;
+	/** Berechtigung des eingetragenen Schlüssels: „admin“, „chests“ (Spieler, nur Kistensuche) oder null (unbekannt). */
+	private static volatile String scope;
 	private static final Set<String> SEEN = new LinkedHashSet<>();
 
 	@Override
@@ -56,6 +58,7 @@ public final class ObrienMod implements ClientModInitializer {
 			return t;
 		});
 		Commands.register();
+		net.obrienfamily.mod.kisten.KistenBefehle.init(); // Kistenfinder (eigenes Modul)
 		// Taste B (in den Steuerungs-Einstellungen änderbar): Bestellübersicht öffnen. O ist in 26.3 die Freundesliste.
 		// Taste J: Family Task Board (J ist in 26.3 nicht belegt).
 		KeyMapping.Category cat = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(ID, "main"));
@@ -75,6 +78,24 @@ public final class ObrienMod implements ClientModInitializer {
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> worker.schedule(ObrienMod::onJoin, 4, TimeUnit.SECONDS));
 	}
 
+	/** Für eigenständige Module der Mod (z. B. Kistenfinder). */
+	public static ShopApi api() { return api; }
+	public static ModConfig config() { return config; }
+	public static String scope() { return scope; }
+	public static boolean isAdminKey() { return "admin".equals(scope); }
+
+	/** Berechtigung des Schlüssels abfragen (/api/mod/me). Bei Verbindungsfehlern bleibt der letzte bekannte Wert erhalten. */
+	public static String refreshScope() {
+		if (!config.hasToken()) { scope = null; return null; }
+		try {
+			JsonObject r = api.get("/api/mod/me");
+			scope = r.get("scope").getAsString();
+		} catch (ShopApi.ApiException e) {
+			if (e.status == 401) scope = null;
+		}
+		return scope;
+	}
+
 	public static String version() {
 		return FabricLoader.getInstance().getModContainer(ID).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("0.0.0");
 	}
@@ -84,6 +105,7 @@ public final class ObrienMod implements ClientModInitializer {
 		cursor = null;
 		welcomed = false;
 		authFailed = false;
+		scope = null;
 		synchronized (SEEN) { SEEN.clear(); }
 	}
 
@@ -97,6 +119,16 @@ public final class ObrienMod implements ClientModInitializer {
 			}
 			return;
 		}
+		// Spieler-Schlüssel (nur Kistensuche): keine Shop-Benachrichtigungen abfragen, nur kurz begrüßen.
+		if ("chests".equals(refreshScope())) {
+			if (!welcomed) {
+				welcomed = true;
+				Notifier.chat(Component.empty().append(Theme.t("Verbunden – Kistensuche aktiv. ", Theme.OK))
+					.append(Notifier.command("[Befehle]", "/obrien hilfe", "Alle Befehle anzeigen")));
+			}
+			updater.check(true);
+			return;
+		}
 		safeTick();
 		updater.check(true);
 	}
@@ -107,7 +139,7 @@ public final class ObrienMod implements ClientModInitializer {
 
 	/** Ein Abruf: beim ersten Mal Zusammenfassung, danach nur neue Ereignisse. */
 	private static void tick() {
-		if (!config.hasToken() || authFailed || Minecraft.getInstance().player == null) return;
+		if (!config.hasToken() || authFailed || "chests".equals(scope) || Minecraft.getInstance().player == null) return;
 		try {
 			if (cursor == null) {
 				JsonObject r = api.get("/api/mod/feed");
@@ -132,6 +164,8 @@ public final class ObrienMod implements ClientModInitializer {
 			if (e.status == 401) {
 				authFailed = true;
 				Notifier.error(e.getMessage());
+			} else if (e.status == 403 && e.body.has("scope")) {
+				scope = e.body.get("scope").getAsString(); // Spieler-Schlüssel: Benachrichtigungen gibt es nur für Admins
 			} else {
 				LOG.info("[O'Brien] Abruf fehlgeschlagen: {}", e.getMessage());
 			}
