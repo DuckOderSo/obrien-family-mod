@@ -13,8 +13,12 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 - **Benachrichtigungen:** neue Bestellanfragen und Dienstleistungsanfragen aus dem Shop, Aufgaben, die dir zugewiesen
   wurden, und Kommentare zu deinen Aufgaben – als Einblendung oben rechts und als Chatzeile (nur für dich sichtbar).
 - **Befehle** (laufen nur auf deinem PC, werden nicht an den Server gesendet):
-  `/obrien bestellungen`, `/obrien aufgaben`, `/obrien status`, `/obrien update`, `/obrien key <Schlüssel>`,
-  `/obrien ton an|aus`, `/obrien toasts an|aus`, `/obrien test`.
+  `/obrien bestellungen`, `/obrien board`, `/obrien aufgaben`, `/obrien status`, `/obrien update`, `/obrien key <Schlüssel>`,
+  `/obrien ton an|aus`, `/obrien toasts an|aus`, `/obrien test`, `/obrien hilfe`.
+- **Kistenfinder** für die Lager der Familie:
+  `/obrien findkiste [item] [all]`, `/obrien setkiste`, `/obrien removekiste [item]`, `/obrien listkisten`, `/obrien infokiste`.
+  Admins registrieren eigene Lagerkisten („diese Kiste = Diamanten“); gesucht wird in diesen Registrierungen –
+  auch ohne das Item im Inventar. Gefundene Kisten in der Nähe werden 10 Sekunden mit Partikeln markiert.
 - **Updates mit Nachfrage:** Die Mod prüft die [Releases](../../releases) dieses Repositorys. Erst nach Klick auf
   „Jetzt herunterladen“ (oder `/obrien update`) wird die neue Version geladen, ihre **Ed25519-Signatur** geprüft
   ([`signing-public-key.pem`](signing-public-key.pem)) und beim Beenden von Minecraft installiert.
@@ -22,8 +26,12 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 ## Was die Mod ausdrücklich **nicht** macht
 
 - Keine Pakete an den Minecraft-Server, keine Chatnachrichten an andere Spieler.
-- Keine Mixins, kein Eingriff in Spielmechanik, Rendering von Welt/Entities, Bewegung oder Kampf.
-- Kein Auslesen von Welt, Inventar, Koordinaten oder anderen Spielern; kein Automatisieren von Eingaben.
+- Keine Mixins, kein Eingriff in Spielmechanik, Bewegung oder Kampf; kein Automatisieren von Eingaben.
+- **Keine Sicht durch Wände:** Die Kistenmarkierung besteht aus normalen Partikeln und wird von Blöcken verdeckt.
+- **Kein Scannen der Welt:** Es werden keine Chunks geladen und keine Gegend nach Kisten durchsucht. Gelesen wird nur
+  der Blockzustand einer Kiste, die du gerade anschaust oder die bereits registriert ist und in deiner Nähe geladen ist.
+- **Kisteninhalte** sieht die Mod nur, wenn ein Admin eine registrierte Kiste selbst öffnet (dann zählt sie die
+  registrierten Items). Fremde Kisten und Inventare anderer Spieler werden nie ausgelesen.
 - Keine Telemetrie: Netzwerkverbindungen nur zur Website der Familie und zu GitHub (Updates).
 
 ## Datenfluss
@@ -33,8 +41,10 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 | `obrien-familie-shop.vercel.app/api/mod/…` | alle 60 s, nur während du in einer Welt bist | persönlicher Mod-Schlüssel → Antwort: neue Ereignisse aus dem Shop |
 | `api.github.com/repos/DuckOderSo/obrien-family-mod/releases/latest` | beim Start und alle 6 h | öffentliche Release-Infos |
 | `github.com/…/releases/download/…` | nur nach deinem Klick auf „Update“ | neue Mod-Datei + Signatur |
+| `…/api/mod/chests` | nur bei Kistenfinder-Befehlen bzw. beim Öffnen einer registrierten Kiste durch einen Admin | Serveradresse, Dimension, Koordinaten der Kiste, Item-ID, ggf. gezählte Menge |
 
 Der Mod-Schlüssel wird lokal in `config/obrien-mod.json` gespeichert und lässt sich im Admin-Bereich jederzeit sperren.
+Es gibt Admin-Schlüssel (alle Funktionen) und Spieler-Schlüssel (nur Kistensuche, nur lesen); Schreibrechte prüft die Website.
 
 ## Installation
 
