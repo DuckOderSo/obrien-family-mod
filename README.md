@@ -23,7 +23,7 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 - **Inhalte:** Öffnet ein Admin eine Truhe im Lager, liest die Mod beim Schließen **alle** Items (gleiche Items auf mehreren
   Slots werden addiert) und speichert den kompletten Inhalt – ohne Chatmeldung.
 - **Suchen:** `/obrien findkiste [item]` (ohne Item: das Item in der Hand) zeigt kompakt, in welchen Bereichen wie viele Truhen
-  das Item enthalten, und markiert die Truhen 30 Sekunden mit Umriss und Lichtsäule. Koordinaten gibt es über
+  das Item enthalten, und markiert die Truhen 15 Sekunden mit einem goldenen Partikelrahmen an ihren Kanten. Koordinaten gibt es über
   `/obrien bestand <item>`; `/obrien listkisten` und `/obrien infokiste` zeigen einzelne Truhen.
 - **Lagerbestand:** `/obrien bestand [item]` (Alias `/obrien lager [item]`) zeigt den Gesamtbestand eines Items über alle
   Lagerbereiche – mit den einzelnen Truhen und Koordinaten. Ohne Item gibt es eine Übersicht aller Items

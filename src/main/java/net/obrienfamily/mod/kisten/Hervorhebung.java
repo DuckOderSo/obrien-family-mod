@@ -10,22 +10,21 @@ import java.util.List;
 /**
  * Markierungen aus Partikeln (nur Client, wie normale Spielgrafik von Blöcken verdeckt – kein „Röntgen“):
  * <ul>
- * <li>Gefundene Kisten: kräftiger goldener Umriss plus Lichtsäule nach oben, 30 Sekunden – auch aus Entfernung gut sichtbar.</li>
+ * <li>Gefundene Kisten: gleichmäßiger goldener Rahmen direkt an den Außenkanten der Truhe, 15 Sekunden.</li>
  * <li>Lagerbereiche: türkiser Rahmen um den ganzen Quader (z. B. nach dem Setzen eines Eckpunkts).</li>
  * </ul>
  * Gezeichnet wird nur in geladenen Chunks der aktuellen Dimension und nur, solange dort wirklich eine Kiste steht. Die Anzahl der
- * Partikel ist begrenzt (Abstand der Punkte wächst mit der Größe, ab vielen Kisten nur noch Lichtsäulen).
+ * Partikel ist begrenzt (höchstens 32 Truhen gleichzeitig; bei Bereichen wächst der Punktabstand mit der Größe).
  */
 public final class Hervorhebung {
 	private Hervorhebung() {}
 
 	private record Box(BlockPos a, BlockPos b, String dim, long bis, boolean bereich) {}
 	private static final List<Box> AKTIV = new ArrayList<>();
-	private static final DustParticleOptions GOLD = new DustParticleOptions(0xFFC83D, 1.25F);
-	private static final DustParticleOptions SAEULE = new DustParticleOptions(0xFFE58A, 2.0F);
+	private static final DustParticleOptions GOLD = new DustParticleOptions(0xFFC83D, 1.1F);
 	private static final DustParticleOptions TUERKIS = new DustParticleOptions(0x36C5FF, 1.5F);
-	static final int KISTE_MS = 30_000;
-	private static final int VOLL_MAX = 16, SAEULE_HOEHE = 18, BEREICH_MAX_PARTIKEL = 420;
+	static final int KISTE_MS = 15_000;
+	private static final int MAX_KISTEN = 32, BEREICH_MAX_PARTIKEL = 420;
 	private static int takt;
 
 	public static void markiere(KistenOrt.Ziel z, String dim) {
@@ -45,13 +44,13 @@ public final class Hervorhebung {
 		}
 	}
 
-	/** Aufruf einmal pro Client-Tick (ohne Netzwerkzugriff). Gezeichnet wird alle 8 Ticks. */
+	/** Aufruf einmal pro Client-Tick (ohne Netzwerkzugriff). Gezeichnet wird alle 12 Ticks. */
 	public static void tick() {
 		Minecraft mc = Minecraft.getInstance();
 		long now = System.currentTimeMillis();
 		synchronized (AKTIV) {
 			AKTIV.removeIf(x -> x.bis() < now);
-			if (AKTIV.isEmpty() || mc.level == null || mc.player == null || ++takt % 8 != 0) return;
+			if (AKTIV.isEmpty() || mc.level == null || mc.player == null || ++takt % 12 != 0) return;
 			String dim = KistenOrt.dimension();
 			int kisten = 0;
 			for (Box x : AKTIV) {
@@ -59,19 +58,23 @@ public final class Hervorhebung {
 				if (x.bereich()) { bereich(mc, x); continue; }
 				// Nur geladene Chunks (es wird nichts nachgeladen) und nur, solange dort noch eine Kiste steht.
 				if (!KistenOrt.geladen(mc.level, x.a()) || !KistenOrt.istLager(mc.level.getBlockState(x.a()).getBlock())) continue;
-				kiste(mc, x, ++kisten <= VOLL_MAX);
+				if (++kisten <= MAX_KISTEN) kiste(mc, x);
 			}
 		}
 	}
 
-	private static void kiste(Minecraft mc, Box x, boolean umriss) {
+	/**
+	 * Gleichmäßiger Partikelrahmen genau auf den Außenkanten des Truhenmodells (Truhe: 1/16 Block eingerückt, 14/16 hoch;
+	 * Doppelkiste: beide Hälften zusammen; Fass: voller Block). Nichts ragt über die Truhe hinaus.
+	 */
+	private static void kiste(Minecraft mc, Box x) {
 		BlockPos b = x.b() == null ? x.a() : x.b();
-		double x0 = Math.min(x.a().getX(), b.getX()) - 0.02, z0 = Math.min(x.a().getZ(), b.getZ()) - 0.02, y0 = x.a().getY() - 0.02;
-		double x1 = Math.max(x.a().getX(), b.getX()) + 1.02, z1 = Math.max(x.a().getZ(), b.getZ()) + 1.02, y1 = x.a().getY() + 0.92;
-		if (umriss) kanten(mc, GOLD, x0, y0, z0, x1, y1, z1, 0.3);
-		// Lichtsäule aus der Mitte der Kiste nach oben
-		double cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-		for (double y = y1 + 0.3; y < y1 + SAEULE_HOEHE; y += 0.6) punkt(mc, SAEULE, cx, y, cz);
+		boolean fass = mc.level.getBlockState(x.a()).getBlock() == net.minecraft.world.level.block.Blocks.BARREL;
+		double rand = fass ? 0 : 1 / 16.0, hoehe = fass ? 1 : 14 / 16.0, abstand = 0.02; // knapp außen, damit nichts im Modell verschwindet
+		double x0 = Math.min(x.a().getX(), b.getX()) + rand - abstand, z0 = Math.min(x.a().getZ(), b.getZ()) + rand - abstand;
+		double x1 = Math.max(x.a().getX(), b.getX()) + 1 - rand + abstand, z1 = Math.max(x.a().getZ(), b.getZ()) + 1 - rand + abstand;
+		double y0 = x.a().getY() - abstand, y1 = x.a().getY() + hoehe + abstand;
+		kanten(mc, GOLD, x0, y0, z0, x1, y1, z1, 0.25);
 	}
 
 	private static void bereich(Minecraft mc, Box x) {

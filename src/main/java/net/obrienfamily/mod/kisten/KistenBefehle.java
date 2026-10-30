@@ -217,7 +217,7 @@ public final class KistenBefehle {
 
 	// ---------- /obrien findkiste ----------
 
-	/** Sucht ein Item in allen Lagerbereichen: kompakte Übersicht je Bereich, gefundene Kisten werden 30 s markiert. */
+	/** Sucht ein Item in allen Lagerbereichen: kompakte Übersicht je Bereich, gefundene Kisten werden einige Sekunden markiert. */
 	private static int find(String arg) {
 		String a = arg.trim(), lower = a.toLowerCase(Locale.ROOT);
 		// „all“ aus früheren Versionen wird ignoriert – gesucht wird immer in allen Lagerbereichen.
@@ -264,7 +264,7 @@ public final class KistenBefehle {
 		lines.add(Component.empty().append(Theme.t(" Gesamtbestand: ", Theme.TEXT)).append(Theme.b(zahl(total) + " Stück", Theme.GOLD))
 			.append(stale > 0 ? Theme.t("  (teils älterer Stand)", Theme.WARN) : Component.empty()));
 		if (unknown > 0) lines.add(Theme.t(" ? " + offen + " – Bestand kann höher sein", Theme.DIM));
-		MutableComponent m = Component.empty().append(Theme.t(markiert > 0 ? " ✦ " + truhen(markiert) + " 30 s markiert" + (fern > 0 ? " · " + fern + " außer Sichtweite" : "") + "  "
+		MutableComponent m = Component.empty().append(Theme.t(markiert > 0 ? " ✦ " + truhen(markiert) + " " + Hervorhebung.KISTE_MS / 1000 + " s markiert" + (fern > 0 ? " · " + fern + " außer Sichtweite" : "") + "  "
 			: " Nicht in Sichtweite – geh näher heran, dann werden die Truhen markiert.  ", Theme.DIM));
 		m.append(Notifier.command("[Details & Koordinaten]", "/obrien bestand " + it.id(), "Alle Truhen mit Menge und Koordinaten"));
 		lines.add(m);
