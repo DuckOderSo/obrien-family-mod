@@ -1,6 +1,5 @@
 package net.obrienfamily.mod.kisten;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -10,18 +9,17 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
-import net.obrienfamily.mod.Notifier;
 import net.obrienfamily.mod.ObrienMod;
 import net.obrienfamily.mod.ShopApi;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * Bestandszählung – die einzige zuverlässige Quelle für Kisteninhalte auf einem fremden Server: Öffnet ein Admin eine
- * registrierte Kiste selbst, schickt der Server ihm den Inhalt. Beim Schließen zählt die Mod die registrierten Items und
- * speichert die Zahl mit Zeitpunkt („beim Öffnen gezählt“). Ohne Öffnen gibt es keine Zahl – es wird nichts geschätzt.
- * Der Kisteninhalt wird dabei nur gelesen, nie verändert.
+ * Bestandserfassung – die einzige zuverlässige Quelle für Kisteninhalte auf einem fremden Server: Öffnet ein Admin eine Kiste
+ * innerhalb eines Lagerbereichs, schickt der Server ihm den Inhalt. Beim Schließen liest die Mod ALLE Slots, fasst gleiche Items
+ * zusammen und speichert den kompletten Inhalt als Schnappschuss (ersetzt den vorherigen). Ohne Öffnen gibt es keine Zahlen –
+ * es wird nichts geschätzt. Der Kisteninhalt wird nur gelesen, nie verändert. Im Chat erscheint dabei nichts.
  */
 public final class Bestand {
 	private Bestand() {}
@@ -35,8 +33,10 @@ public final class Bestand {
 			if (level.isClientSide() && ObrienMod.isAdminKey()) {
 				Minecraft mc = Minecraft.getInstance();
 				KistenOrt.Erkennung e = mc.level == null ? null : KistenOrt.erkenne(mc.level, hit.getBlockPos());
-				String welt = KistenOrt.welt();
-				letzter = e != null && e.ziel() != null && welt != null ? new Klick(welt, KistenOrt.dimension(), e.ziel(), System.currentTimeMillis()) : null;
+				String welt = KistenOrt.welt(), dim = KistenOrt.dimension();
+				// Nur Kisten innerhalb eines Lagerbereichs werden erfasst (die Website prüft das zusätzlich).
+				letzter = e != null && e.ziel() != null && welt != null && KistenWaechter.imLager(dim, e.ziel())
+					? new Klick(welt, dim, e.ziel(), System.currentTimeMillis()) : null;
 			}
 			return InteractionResult.PASS;
 		});
@@ -52,28 +52,26 @@ public final class Bestand {
 		});
 	}
 
-	private static void zaehlen(Klick k, ChestMenu menu, int rows) {
-		Map<String, Integer> inhalt = new LinkedHashMap<>();
+	/** Alle Item-Typen der Kiste getrennt zählen; mehrere Slots desselben Items werden addiert, leere Slots ignoriert. */
+	static Map<String, Integer> inhalt(ChestMenu menu, int rows) {
+		Map<String, Integer> inhalt = new TreeMap<>();
 		for (int i = 0; i < rows * 9 && i < menu.slots.size(); i++) {
 			ItemStack st = menu.getSlot(i).getItem();
 			if (st.isEmpty()) continue;
 			inhalt.merge(BuiltInRegistries.ITEM.getKey(st.getItem()).toString(), st.getCount(), Integer::sum);
 		}
+		return inhalt;
+	}
+
+	private static void zaehlen(Klick k, ChestMenu menu, int rows) {
+		Map<String, Integer> inhalt = inhalt(menu, rows);
 		KistenApi.IO.execute(() -> {
 			try {
-				JsonObject at = KistenApi.an(k.welt(), k.dim(), k.ziel().a()).getAsJsonObject("location");
-				if (at == null || at.isJsonNull()) return; // nicht registriert – nichts speichern
-				Map<String, Integer> zaehlung = new LinkedHashMap<>();
-				for (JsonElement e : at.getAsJsonArray("items")) {
-					String id = e.getAsJsonObject().get("item").getAsString();
-					zaehlung.put(id, inhalt.getOrDefault(id, 0)); // registriert, aber nicht in der Kiste = gezählt 0
-				}
-				KistenApi.pruefung(k.welt(), k.dim(), k.ziel().a(), true, zaehlung);
-				StringBuilder sb = new StringBuilder();
-				zaehlung.forEach((id, n) -> sb.append(sb.length() > 0 ? " · " : "").append(ItemSuche.name(id)).append(" ").append(n));
-				Notifier.info("Bestand gezählt: " + sb);
+				JsonObject r = KistenApi.inhalt(k.welt(), k.dim(), k.ziel(), inhalt);
+				if (r.has("location") && !r.get("location").isJsonNull()) KistenWaechter.merke(r.getAsJsonObject("location"));
+				ObrienMod.LOG.debug("[O'Brien] Kisteninhalt erfasst: {} Item-Typen", inhalt.size());
 			} catch (ShopApi.ApiException e) {
-				ObrienMod.LOG.info("[O'Brien] Bestand konnte nicht gespeichert werden: {}", e.getMessage());
+				ObrienMod.LOG.info("[O'Brien] Kisteninhalt konnte nicht gespeichert werden: {}", e.getMessage());
 			}
 		});
 	}

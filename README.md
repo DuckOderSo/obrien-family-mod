@@ -15,15 +15,21 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 - **Befehle** (laufen nur auf deinem PC, werden nicht an den Server gesendet):
   `/obrien bestellungen`, `/obrien board`, `/obrien aufgaben`, `/obrien status`, `/obrien update`, `/obrien key <Schlüssel>`,
   `/obrien ton an|aus`, `/obrien toasts an|aus`, `/obrien test`, `/obrien hilfe`.
-- **Kistenfinder** für die Lager der Familie:
-  `/obrien findkiste [item] [all]`, `/obrien setkiste`, `/obrien removekiste [item]`, `/obrien listkisten`, `/obrien infokiste`.
-  Admins registrieren eigene Lagerkisten („diese Kiste = Diamanten“); gesucht wird in diesen Registrierungen –
-  auch ohne das Item im Inventar. Gefundene Kisten in der Nähe werden 10 Sekunden mit Partikeln markiert.
-- **Lagerbestand:** `/obrien bestand [item]` (Alias `/obrien lager`) zeigt den Gesamtbestand eines Items über alle
-  registrierten Lagerkisten – mit den einzelnen Lagerorten und Koordinaten. Ohne Item gibt es eine Übersicht aller Items
+- **Lagerbereiche** (wie bei WorldEdit): `/obrien lager erstellen <name>`, dann auf eine Ecke schauen und
+  `/obrien lager punkt1`, auf die gegenüberliegende Ecke schauen und `/obrien lager punkt2` (anvisierter Block, bis 64 Blöcke).
+  Alle Truhen, Doppelkisten und Fässer im Quader werden automatisch erkannt – auch neu platzierte; abgebaute verschwinden
+  automatisch. Verwalten: `/obrien lager liste | info [name] | umbenennen <alt> <neu> | löschen <name>`.
+  Bereiche dürfen sich überschneiden; jede Truhe zählt trotzdem nur einmal.
+- **Inhalte:** Öffnet ein Admin eine Truhe im Lager, liest die Mod beim Schließen **alle** Items (gleiche Items auf mehreren
+  Slots werden addiert) und speichert den kompletten Inhalt – ohne Chatmeldung.
+- **Suchen:** `/obrien findkiste [item]` (ohne Item: das Item in der Hand) zeigt kompakt, in welchen Bereichen wie viele Truhen
+  das Item enthalten, und markiert die Truhen 30 Sekunden mit Umriss und Lichtsäule. Koordinaten gibt es über
+  `/obrien bestand <item>`; `/obrien listkisten` und `/obrien infokiste` zeigen einzelne Truhen.
+- **Lagerbestand:** `/obrien bestand [item]` (Alias `/obrien lager [item]`) zeigt den Gesamtbestand eines Items über alle
+  Lagerbereiche – mit den einzelnen Truhen und Koordinaten. Ohne Item gibt es eine Übersicht aller Items
   (`name` = alphabetisch, `niedrig` = unter Mindestbestand, `ungeprüft` = unsichere Bestände, Zahl = Seite).
-  Summiert werden nur echte Zählungen: Bestätigt = in den letzten 24 Stunden gezählt, ältere Zählungen werden als
-  „letzter bekannter Stand“ markiert, nie gezählte Kisten als „unbekannt“ (nie als 0). Admins können mit
+  Summiert werden nur echte Erfassungen: Bestätigt = in den letzten 24 Stunden gelesen, ältere als
+  „letzter bekannter Stand“; noch nie geöffnete Truhen gelten als „unbekannt“ (nie als 0). Admins können mit
   `/obrien bestand <item> min <zahl|aus>` einen Mindestbestand festlegen.
 - **Updates mit Nachfrage:** Die Mod prüft die [Releases](../../releases) dieses Repositorys. Erst nach Klick auf
   „Jetzt herunterladen“ (oder `/obrien update`) wird die neue Version geladen, ihre **Ed25519-Signatur** geprüft
@@ -34,13 +40,13 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 - Keine Pakete an den Minecraft-Server, keine Chatnachrichten an andere Spieler.
 - Keine Mixins, kein Eingriff in Spielmechanik, Bewegung oder Kampf; kein Automatisieren von Eingaben.
 - **Keine Sicht durch Wände:** Die Kistenmarkierung besteht aus normalen Partikeln und wird von Blöcken verdeckt.
-- **Kein Scannen der Welt:** Es werden keine Chunks geladen und keine Gegend nach Kisten durchsucht. Gelesen wird nur
-  der Blockzustand einer Kiste, die du gerade anschaust oder die bereits registriert ist und in deiner Nähe geladen ist.
-- **Abgebaute Kisten** erkennt die Mod nur in Chunks, die gerade bei dir geladen sind: Fehlt eine registrierte Kiste dort bei
-  zwei Prüfungen im Abstand von 2 Sekunden, löscht ein Client mit Admin-Schlüssel die Registrierung samt aller Item-Zuordnungen
-  und Bestände (bei Doppelkisten die ganze Kiste, wenn eine Hälfte fehlt). Nicht geladene Kisten werden nie gelöscht.
-- **Kisteninhalte** sieht die Mod nur, wenn ein Admin eine registrierte Kiste selbst öffnet (dann zählt sie die
-  registrierten Items). Fremde Kisten und Inventare anderer Spieler werden nie ausgelesen.
+- **Kein Scannen der Welt:** Es werden keine Chunks geladen. Erkannt werden Truhen nur innerhalb eurer Lagerbereiche und nur
+  in Chunks, die ohnehin bei dir geladen sind (gelesen wird die Liste der Block-Entities dieser Chunks, kein Block-für-Block-Scan).
+- **Abgebaute Truhen** erkennt die Mod nur in geladenen Chunks: Fehlt eine erfasste Truhe dort bei zwei Prüfungen im Abstand
+  von 2 Sekunden, entfernt ein Client mit Admin-Schlüssel sie samt Inhalt (bei Doppelkisten die ganze Kiste). Nicht geladene
+  Truhen werden nie gelöscht.
+- **Kisteninhalte** sieht die Mod nur, wenn ein Admin eine Truhe im Lager selbst öffnet. Truhen außerhalb der Lagerbereiche
+  und Inventare anderer Spieler werden nie ausgelesen.
 - Keine Telemetrie: Netzwerkverbindungen nur zur Website der Familie und zu GitHub (Updates).
 
 ## Datenfluss
@@ -50,7 +56,7 @@ eigenen Item-Shop (<https://obrien-familie-shop.vercel.app>) direkt im Spiel seh
 | `obrien-familie-shop.vercel.app/api/mod/…` | alle 60 s, nur während du in einer Welt bist | persönlicher Mod-Schlüssel → Antwort: neue Ereignisse aus dem Shop |
 | `api.github.com/repos/DuckOderSo/obrien-family-mod/releases/latest` | beim Start und alle 6 h | öffentliche Release-Infos |
 | `github.com/…/releases/download/…` | nur nach deinem Klick auf „Update“ | neue Mod-Datei + Signatur |
-| `…/api/mod/chests` | nur bei Kistenfinder-Befehlen bzw. beim Öffnen einer registrierten Kiste durch einen Admin | Serveradresse, Dimension, Koordinaten der Kiste, Item-ID, ggf. gezählte Menge |
+| `…/api/mod/chests` | bei Lagerbefehlen, beim Erkennen/Abbauen von Truhen in Lagerbereichen und beim Schließen einer Lagertruhe (Admin) | Serveradresse, Dimension, Koordinaten der Bereiche und Truhen, Item-IDs und Mengen |
 
 Der Mod-Schlüssel wird lokal in `config/obrien-mod.json` gespeichert und lässt sich im Admin-Bereich jederzeit sperren.
 Es gibt Admin-Schlüssel (alle Funktionen) und Spieler-Schlüssel (nur Kistensuche, nur lesen); Schreibrechte prüft die Website.
